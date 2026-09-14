@@ -1,8 +1,8 @@
 # Carbons Minecraft 0.8.0 Render package
 
-Full game source plus a long-running Node static server for Render. Multiplayer persistence stays on the existing Supabase project. The Render process does not open WebSockets.
+Full game source plus a long-running Node static server for Render. Multiplayer persistence stays on the existing Supabase project. The game itself does not use this process for multiplayer sockets.
 
-The server binds `0.0.0.0` and `process.env.PORT` (local default `10000`) and serves files from `public/`. `GET /healthz` returns JSON `{ ok: true }`.
+The server binds `0.0.0.0` and `process.env.PORT` (local default `10000`) and serves files from `public/`. `GET /healthz` returns JSON `{ ok: true }`. A tiny RFC 6455 keep-alive lives on the same HTTP server at `/ws/keepalive` (zero npm dependencies; no `ws` package).
 
 Presence v8 uses per-tab sessionStorage, explicit join/leave events, main-menu/tab-close leave only, and a 45-second crash fallback. ESC never leaves.
 
@@ -33,7 +33,29 @@ This repo is ready to deploy as a **free Node web service**. You do **not** add 
 
 After the first deploy, each push to `main` rebuilds and redeploys automatically.
 
-Free web services spin down after about 15 minutes with no traffic. The next request can take about a minute to wake the process. That is expected on the free plan.
+Free web services spin down after about 15 minutes with no traffic. Ping the WebSocket keep-alive below every ~10 minutes to keep the free instance awake. If it does sleep, the next request can take about a minute to wake the process.
+
+## WebSocket keep-alive (Render free tier)
+
+External pingers should use WebSocket, not HTTP:
+
+```
+wss://carbons-minecraft.onrender.com/ws/keepalive
+```
+
+On connect the server accepts. Send text `ping` (leading/trailing whitespace is ignored). The server replies text `pong`. The client may then close. Idle connects that send nothing stay open about 30 seconds, then close cleanly.
+
+```bash
+# websocat: send ping, print pong, exit
+printf 'ping' | websocat -1 wss://carbons-minecraft.onrender.com/ws/keepalive
+```
+
+```js
+// Node 22+ / browser
+const ws = new WebSocket('wss://carbons-minecraft.onrender.com/ws/keepalive');
+ws.addEventListener('open', () => ws.send('ping'));
+ws.addEventListener('message', (ev) => { console.log(ev.data); ws.close(); });
+```
 
 ### CLI alternative
 
@@ -76,13 +98,14 @@ Requires Node 20 or newer (Node 24 matches Render).
 node server.mjs
 # then: curl -sS http://127.0.0.1:10000/healthz
 # and:  curl -sS -o /dev/null -w "%{http_code}\n" http://127.0.0.1:10000/
+# and:  printf 'ping' | websocat -1 ws://127.0.0.1:10000/ws/keepalive
 ```
 
 Open `http://127.0.0.1:10000/` in a browser.
 
 ## Multiplayer / Supabase
 
-Render only serves static files and `/healthz`. Shared world data already talks to the existing Supabase project from the browser.
+Render serves static files, `GET /healthz`, and the `/ws/keepalive` ping/pong socket. Shared world data already talks to the existing Supabase project from the browser. This keep-alive is not used by the game client.
 
 - Publishable URL and key are bundled in `public/src/engine.js`. You do not paste them into Render.
 - Optional SQL: `supabase/001_presence_v8.sql` (presence v8) and `supabase/RESET_WORLD.sql` (destructive shared-world reset). Run those in the Supabase SQL editor only if you need them. They are not part of the Render build.
