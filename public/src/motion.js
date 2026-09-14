@@ -4,7 +4,7 @@ export const angleDelta=(a,b)=>Math.atan2(Math.sin(a-b),Math.cos(a-b));
 export const damp=(a,b,rate,dt)=>a+(b-a)*(1-Math.exp(-rate*Math.max(0,dt)));
 export class LookInput {
  constructor(){this.sensitivity=.0022;this.dx=0;this.dy=0;this.ignoreUntil=0;this.droppedSpikes=0;this.last=-Infinity;}
- reset(now=0){this.dx=this.dy=0;this.ignoreUntil=now+70;this.last=now;}
+ reset(now=0){this.dx=this.dy=0;this.ignoreUntil=now+20;this.last=now;}
  push(dx,dy,now=0,width=1920,height=1080){
   if(!Number.isFinite(dx)||!Number.isFinite(dy)||now<this.ignoreUntil)return false;
   // Pointer-lock transitions can report a desktop-sized jump. Never apply that as a turn.
