@@ -1,0 +1,2 @@
+export const WORLD_CONFIG=Object.freeze({size:1024,half:512,height:96,legacyCenter:512,preservedHalf:256,seed:156078492,generator:'frontier-v2',version:7});export const IN_WORLD=(x,z)=>x>=-512&&x<=511&&z>=-512&&z<=511;export const IN_LEGACY=(x,z)=>x>=-256&&x<=255&&z>=-256&&z<=255;export const chunkIndex=(x,z)=>Math.floor((x+512)/16)+Math.floor((z+512)/16)*64;
+globalThis.HALF=()=>WORLD_CONFIG.half;

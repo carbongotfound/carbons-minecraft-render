@@ -1,0 +1,3 @@
+/* System notices share the existing chat history and fade timing. */
+#messages > .chat-presence { color: #b8d797; font-size: inherit; line-height: 1.45; padding: 2px 5px; overflow-wrap: anywhere; white-space: normal; border-left: 2px solid currentColor; }
+#messages > .chat-presence-leave { color: #c6b78f; }

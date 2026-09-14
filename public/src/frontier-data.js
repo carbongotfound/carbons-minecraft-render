@@ -1,0 +1,8 @@
+import {ITEMS,BLOCK_ITEMS,RECIPES,SMELTING} from './core.js';
+import {BLOCKS,TILES,recipe} from './expansion-data.js';
+import {EXTRA_BLOCKS} from './extra-data.js';
+Object.setPrototypeOf(ITEMS,null);
+for(const [id,key,name,color,hardness,tier,drop] of [[141,'amethyst_block','Amethyst block','#9c7cba',1.5,1,'amethyst_block'],[142,'calcite','Calcite','#c3c4b5',.75,1,'calcite'],[143,'amethyst_cluster','Amethyst cluster','#b290d2',1.5,3,'amethyst_shard'],[144,'dungeon_spawner','Dungeon spawner','#384a43',6,2,null]]){const b={id,key,name,color,hardness,tool:'pickaxe',tier,drop};BLOCKS.set(id,b);TILES.set(id,id+24);EXTRA_BLOCKS[id]={name,color,item:key};if(id!==144){ITEMS[key]={name,block:id,tile:id+24};BLOCK_ITEMS[id]=key;}}
+ITEMS.amethyst_shard={name:'Amethyst shard'};ITEMS.spyglass={name:'Spyglass',max:1};ITEMS.iron_nugget={name:'Iron nugget'};
+recipe('spyglass',1,[['amethyst_shard'],['copper'],['copper']]);recipe('amethyst_block',1,[['amethyst_shard','amethyst_shard'],['amethyst_shard','amethyst_shard']]);recipe('iron_nugget',9,[['iron']]);recipe('iron',1,[['iron_nugget','iron_nugget','iron_nugget'],['iron_nugget','iron_nugget','iron_nugget'],['iron_nugget','iron_nugget','iron_nugget']]);
+export function frontierIcon(id,item,g){if(!['amethyst_shard','spyglass','iron_nugget'].includes(id))return false;const p=(x,y,w,h,c)=>{g.fillStyle=c;g.fillRect(x*2,y*2,w*2,h*2);};if(id==='amethyst_shard'){for(let i=0;i<10;i++){p(4+Math.floor(i/2),12-i,3,2,i%2?'#ae8dcc':'#dbb8e9');}p(11,1,2,3,'#ede0fc');}else if(id==='spyglass'){for(let i=2;i<12;i++){p(i,14-i,3,3,'#97733e');p(i,14-i,2,1,'#dab575');}p(10,1,4,4,'#467777');p(11,1,3,2,'#b6dada');}else{p(6,5,4,6,'#a0b2b1');p(5,6,6,3,'#b5c8c4');p(6,5,3,2,'#e3ebe1');}return true;}
