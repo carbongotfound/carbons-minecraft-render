@@ -1,11 +1,18 @@
+# yaml-language-server: $schema=https://render.com/schema/render.yaml.json
+# Free Node web service. Render injects PORT (default 10000). Do not set PORT here.
+# No dashboard secrets are required for the static file server.
 services:
   - type: web
     name: carbons-minecraft
     runtime: node
     plan: free
-    buildCommand: npm install --omit=dev
-    startCommand: npm start
+    branch: main
+    # No npm packages to install. Native Node still requires a buildCommand.
+    buildCommand: "true"
+    startCommand: node server.mjs
     healthCheckPath: /healthz
     envVars:
       - key: NODE_ENV
         value: production
+      - key: NODE_VERSION
+        value: "24"
