@@ -1,1 +1,1 @@
-export const WORLD_EPOCH=1788957150456;export const BUILD_VERSION='survival-0.8.3-load-fix';
+export const WORLD_EPOCH=1788957150456;export const BUILD_VERSION='survival-0.8.4-async-pickup';
