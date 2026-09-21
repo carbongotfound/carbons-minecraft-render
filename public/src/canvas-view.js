@@ -8,6 +8,7 @@ const MOB_COL = {
 };
 const FACE_LIGHT = [0.74, 0.78, 1, 0.5, 0.88, 0.82];
 const TEX = 16;
+const TEX_FACE = TEX * TEX;
 const DIRT = [152, 114, 80];
 const clamp = (n, a, b) => Math.max(a, Math.min(b, n));
 const hexRgb = (c) => {
