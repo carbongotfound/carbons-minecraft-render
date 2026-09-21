@@ -118,11 +118,93 @@ const handleKeepaliveSocket = (socket) => {
   });
 };
 
+const LINK_TTL_MS = 12 * 60 * 1000;
+const LINK_CHARS = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789';
+const linkCodes = new Map();
+const linkHits = new Map();
+
+const clientIp = (req) => {
+  const fwd = String(req.headers['x-forwarded-for'] || '').split(',')[0].trim();
+  return fwd || req.socket?.remoteAddress || 'unknown';
+};
+
+const readJson = (req) => new Promise((resolve, reject) => {
+  let raw = '';
+  req.on('data', (c) => {
+    raw += c;
+    if (raw.length > 4096) { req.destroy(); reject(new Error('too large')); }
+  });
+  req.on('end', () => {
+    try { resolve(raw ? JSON.parse(raw) : {}); }
+    catch { reject(new Error('invalid json')); }
+  });
+  req.on('error', reject);
+});
+
+const rateOk = (ip, kind, max) => {
+  const now = Date.now();
+  const key = kind + ':' + ip;
+  const hits = (linkHits.get(key) || []).filter((t) => now - t < LINK_TTL_MS);
+  if (hits.length >= max) { linkHits.set(key, hits); return false; }
+  hits.push(now);
+  linkHits.set(key, hits);
+  return true;
+};
+
+const pruneCodes = () => {
+  const now = Date.now();
+  for (const [code, row] of linkCodes) if (row.used || row.exp < now) linkCodes.delete(code);
+};
+
+const makeCode = () => {
+  for (let n = 0; n < 8; n++) {
+    let c = '';
+    for (let i = 0; i < 6; i++) c += LINK_CHARS[crypto.randomInt(LINK_CHARS.length)];
+    if (!linkCodes.has(c)) return c;
+  }
+  throw new Error('Could not allocate a code');
+};
+
+const json = (res, code, body) => send(res, code, JSON.stringify(body), 'application/json; charset=utf-8');
+
+const handleLink = async (req, res, pathname) => {
+  if (req.method !== 'POST') return json(res, 405, {error: 'POST only'});
+  pruneCodes();
+  const ip = clientIp(req);
+  let body;
+  try { body = await readJson(req); }
+  catch { return json(res, 400, {error: 'Invalid JSON'}); }
+  if (pathname === '/api/link-code') {
+    if (!rateOk(ip, 'issue', 8)) return json(res, 429, {error: 'Too many codes. Wait a few minutes.'});
+    const id = String(body.id || '');
+    const token = String(body.token || '');
+    if (!/^[0-9a-f-]{36}$/i.test(id) || token.length < 8 || token.length > 200) {
+      return json(res, 400, {error: 'Join the world first.'});
+    }
+    const code = makeCode();
+    linkCodes.set(code, {id, token, exp: Date.now() + LINK_TTL_MS, used: false});
+    return json(res, 200, {code, expires_in: 720});
+  }
+  if (pathname === '/api/link-redeem') {
+    if (!rateOk(ip, 'redeem', 20)) return json(res, 429, {error: 'Too many tries. Wait a few minutes.'});
+    const code = String(body.code || '').toUpperCase().replace(/[^0-9A-Z]/g, '');
+    const row = linkCodes.get(code);
+    if (!row || row.used || row.exp < Date.now()) return json(res, 400, {error: 'Code expired or already used'});
+    row.used = true;
+    linkCodes.delete(code);
+    return json(res, 200, {id: row.id, token: row.token});
+  }
+  return json(res, 404, {error: 'Not found'});
+};
+
 const server = http.createServer(async (req, res) => {
   try {
     const u = new URL(req.url, 'http://local');
     if (u.pathname === '/healthz') {
       return send(res, 200, JSON.stringify({ ok: true, service: 'carbons-minecraft' }), 'application/json; charset=utf-8');
+    }
+    if (u.pathname === '/api/link-code' || u.pathname === '/api/link-redeem') {
+      return handleLink(req, res, u.pathname);
     }
     if (u.pathname === WS_PATH) return send(res, 426, 'Upgrade Required');
     let rel = decodeURIComponent(u.pathname).replace(/^\/+/, '') || 'index.html';
