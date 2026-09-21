@@ -202,22 +202,22 @@ class SoftwareRenderer {
     const g = this.ctx, W = this.canvas.width, H = this.canvas.height;
     g.save();
     g.fillStyle = '#cda780';
-    g.fillRect(W * .62, H * .72, W * .28, H * .32);
+    g.fillRect(W * .78, H * .84, W * .14, H * .14);
     g.fillStyle = '#8a6a4c';
-    g.fillRect(W * .64, H * .74, W * .08, H * .22);
+    g.fillRect(W * .80, H * .86, W * .04, H * .09);
     if (view.held?.visible) {
       const id = view.heldBlock || 1;
       g.fillStyle = BlockInfo[id]?.color || '#85aa56';
-      g.fillRect(W * .74, H * .68, W * .16, W * .16);
+      g.fillRect(W * .84, H * .80, W * .09, W * .09);
       g.fillStyle = '#0003';
-      g.fillRect(W * .74, H * .68 + W * .12, W * .16, W * .04);
+      g.fillRect(W * .84, H * .80 + W * .07, W * .09, W * .02);
     }
     g.restore();
   }
 }
 
 export function installCanvasRenderer() {
-  globalThis.__carbonMakeRenderer = (opts) => new SoftwareRenderer(opts);
+  globalThis.__carbonMakeRenderer = SoftwareRenderer;
 }
 
 export function attachCanvasView(view) {

@@ -53,7 +53,13 @@ export function installLoginCode({game, toast}) {
     } catch (e) { toast?.(e.message || 'Could not make a code.'); }
     finally { make.disabled = false; }
   };
-  if (redeem) redeem.onclick = () => $('joinForm')?.requestSubmit();
+  if (redeem) redeem.onclick = () => {
+    if (!clean($('loginCode')?.value)) {
+      if ($('joinError')) $('joinError').textContent = 'Enter the 6-character code.';
+      return;
+    }
+    $('joinForm')?.requestSubmit();
+  };
   const form = $('joinForm');
   if (form) form.addEventListener('submit', async (e) => {
     const code = clean($('loginCode')?.value);
