@@ -1,4 +1,4 @@
-# Carbons Minecraft 0.9.0 Render package
+# Carbons Minecraft 0.9.1 Render package
 
 Full game source plus a long-running Node static server for Render. Multiplayer persistence stays on the existing Supabase project. The game itself does not use this process for multiplayer sockets.
 
@@ -7,6 +7,19 @@ The server binds `0.0.0.0` and `process.env.PORT` (local default `10000`) and se
 Presence v8 uses per-tab sessionStorage, explicit join/leave events, main-menu/tab-close leave only, and a 45-second crash fallback. ESC never leaves.
 
 Terrain v3 smooths rivers/mountains and reduces ravines. `supabase/RESET_WORLD.sql` repeats the shared world reset.
+
+## Building and redstone update (0.9.1)
+
+- **50 new placeable blocks:** all 16 concrete colors, 13 additional wool colors, 11 quartz/polished stone/cut finishes, 9 slab types, and a daylight sensor. Slabs have half-height collision and geometry. Spruce and birch planks craft their matching slabs.
+- **Daylight/night sensor:** craft glass + quartz + oak slabs at a crafting table. Right-click to invert it. Sky exposure and the shared day/night clock control signal strength; use night mode for automatic outdoor lighting.
+- **Progress [J] → Build book:** six projects with diagrams and material lists, plus a searchable building catalog. Inventory recipes can now be filtered by building, colors, redstone, tools and food.
+- Concrete crafts directly from four sand, four gravel and one dye, yielding eight blocks. Farmers sell yellow dye; the other dyes come from flowers, lapis, bone, coal, cactus and mixing.
+- Repeaters now power only their output direction. Pistons work throughout each dimension, enforce the 12-block push limit and keep portal blocks/containers immovable when retracting.
+- **Flint and steel already exists:** one iron ingot and one flint diagonally in a 2×2 grid. It lights obsidian portal frames and primes TNT. Ordinary blocks do not burn; using it on them no longer triggers an explosion.
+
+The additive migration in `supabase/migrations/20260922184117_building_redstone_catalog.sql` registers 64 item types and extends the existing edit validator to block 195. It preserves sessions, world data, permissions and existing items. It has been applied to the linked project. No world reset is needed. Reload the game after deployment to load the new catalog.
+
+The rollback-only SQL smoke test in `supabase/tests/building_catalog.sql` checks all 51 block states in three dimensions, storage/drop handling, invalid sessions and the block-ID limit. Browser coverage includes the build book, real recipe controls, placement, sensor circuits, flint behavior, and slab worker geometry.
 
 ## Survival update (0.9.0)
 

@@ -20,8 +20,9 @@ try {
   const context = await browser.newContext({viewport: {width: 1440, height: 900}});
   await context.route(/supabase\.(co|in)/, route => route.abort());
   page = await context.newPage(); const errors = [];
-  page.on('pageerror', e => errors.push(e.message));
-  await page.goto(`http://127.0.0.1:${port}/?test`);
+  page.on('pageerror', e => { errors.push(e.message); console.error('Browser error:', e.message); });
+  page.on('console', message => { if(message.type() === 'error' && !message.text().includes('net::ERR_FAILED')) console.error('Browser console:', message.text()); });
+  await page.goto(`http://127.0.0.1:${port}/?test`, {waitUntil: 'commit'});
   await page.waitForFunction(() => !!window.__survival, null, {timeout: 120000});
   assert.equal(await page.locator('#title').isVisible(), true);
 
@@ -107,6 +108,87 @@ try {
   assert.equal(await page.getByRole('button', {name: 'Delivered', exact: true}).isDisabled(), true);
   await page.screenshot({path: resolve(output, 'village-requests.png')});
 
+  await page.getByRole('button', {name: 'Build book', exact: true}).click();
+  assert.equal(await page.locator('.build-projects .progress-card').count(), 6);
+  await page.getByRole('searchbox', {name: 'Search building blocks'}).fill('concrete');
+  assert.equal(await page.locator('.build-material').count(), 16);
+  await page.screenshot({path: resolve(output, 'build-book.png')});
+  await page.locator('#expansionClose').click();
+
+  // Craft the new materials through recipe filters and actual result slots.
+  await page.evaluate(() => { const a = window.__survival; a.game.inv.add('sand', 4); a.game.inv.add('gravel', 4); a.game.inv.add('white_dye', 1); a.openInventory('table'); });
+  await page.locator('#recipeCategory').selectOption('colors');
+  await page.locator('#recipeSearch').fill('white concrete');
+  assert.equal(await page.locator('#recipes button').count(), 1);
+  await page.locator('#recipes button').click();
+  await page.locator('#craftResult').click();
+  assert.equal(await page.evaluate(() => window.__survival.carried?.id), 'white_concrete');
+  assert.equal(await page.evaluate(() => window.__survival.carried?.count), 8);
+  await page.evaluate(() => window.__survival.closePanel());
+  await page.evaluate(() => { const a = window.__survival; a.game.inv.add('birch_planks', 3); a.openInventory('table'); });
+  await page.locator('#recipeCategory').selectOption('building');
+  await page.locator('#recipeSearch').fill('birch slab');
+  await page.locator('#recipes button').click(); await page.locator('#craftResult').click();
+  assert.equal(await page.evaluate(() => window.__survival.carried?.id), 'birch_slab');
+  await page.evaluate(() => window.__survival.closePanel());
+
+  // Keep edits local but exercise placement, sensor use and the real circuit tick.
+  const building = await page.evaluate(async () => {
+    const a = window.__survival, g = a.game, e = g.expansion;
+    const {ITEMS} = await import('/src/core.js');
+    const {DAYLIGHT_SENSOR, NIGHT_SENSOR} = await import('/src/building-data.js');
+    const {B} = await import('/src/expansion-data.js');
+    const {WORLD_EPOCH} = await import('/src/config.js');
+    const originalEdit = e.edit, originalBatch = e.batch, originalAuthority = Object.getOwnPropertyDescriptor(a.mobs, 'authority');
+    let revision = 1000000000;
+    e.edit = async (x,y,z,block,meta={}) => { g.world.apply({x,y,z,block,meta,revision:++revision}); return true; };
+    e.batch = async edits => { for (const edit of edits) await e.edit(edit.x,edit.y,edit.z,edit.block,edit.meta); return true; };
+    const wait = async () => { for(let i=0;i<50&&e.busy;i++) await new Promise(r=>setTimeout(r,10)); };
+    const placed = [];
+    for (const [i, id] of ['white_concrete','quartz_pillar','birch_slab','daylight_sensor'].entries()) {
+      g.inv.slots[0] = {id,count:2}; a.select(0); g.world.set(i*2,81,0,0);
+      e.handleUse({x:i*2,y:80,z:0,b:3,n:[0,1,0]},performance.now()); await wait();
+      placed.push([g.world.get(i*2,81,0),g.inv.slots[0]?.count]);
+    }
+    const expected = ['white_concrete','quartz_pillar','birch_slab','daylight_sensor'].map(id=>[ITEMS[id].block,1]);
+    e.handleUse({x:6,y:81,z:0,b:DAYLIGHT_SENSOR,n:[0,1,0]},performance.now()); await wait();
+    const inverted = g.world.get(6,81,0) === NIGHT_SENSOR;
+    g.inv.slots[0] = {id:'flint_and_steel',count:1,wear:0};
+    let explosions = 0; const oldExplode = e.explode; e.explode = async () => { explosions++; };
+    e.handleUse({x:0,y:81,z:0,b:ITEMS.white_concrete.block,n:[0,1,0]},performance.now()); await wait();
+    e.explode = oldExplode;
+    // A roof blocks sunlight. Night mode then powers a lamp through two dust tiles.
+    for (const [x,b] of [[6,NIGHT_SENSOR],[7,B.WIRE],[8,B.WIRE],[9,B.LAMP]]) await e.edit(x,81,0,b);
+    const oldNodes = e.circuitNodes; e.circuitNodes = new Set(['6,81,0','7,81,0','8,81,0','9,81,0']);
+    Object.defineProperty(a.mobs, 'authority', {configurable:true, value:true}); e.nextCircuit = 0;
+    g.clockOffset = WORLD_EPOCH + 900000 - Date.now(); e.runCircuits(performance.now()); await wait();
+    const atNight = g.world.get(9,81,0);
+    g.clockOffset = WORLD_EPOCH + 300000 - Date.now(); e.nextCircuit = 0; e.runCircuits(performance.now()); await wait();
+    const atDay = g.world.get(9,81,0);
+    g.world.set(6,82,0,3); g.upgrade.updateColumn(6,0); e.nextCircuit = 0; e.runCircuits(performance.now()); await wait();
+    const roofed = g.world.get(9,81,0); g.world.set(6,82,0,0); g.upgrade.updateColumn(6,0);
+    e.circuitNodes = oldNodes; if(originalAuthority)Object.defineProperty(a.mobs,'authority',originalAuthority);else delete a.mobs.authority; e.edit = originalEdit; e.batch = originalBatch;
+    return {placed,expected,inverted,explosions,atNight,atDay,roofed,lamp:B.LAMP,lit:B.LAMP_ON};
+  });
+  assert.deepEqual(building.placed, building.expected);
+  assert.equal(building.inverted, true); assert.equal(building.explosions, 0);
+  assert.equal(building.atNight, building.lit); assert.equal(building.atDay, building.lamp); assert.equal(building.roofed, building.lit);
+
+  // Send a new slab through the actual meshing worker and inspect its bounds.
+  const mesh = await page.evaluate(async () => {
+    const {FACES} = await import('/src/engine.js');
+    const {ITEMS} = await import('/src/core.js');
+    const stream = window.__survival.game.frontier.stream;
+    const cells = new Uint8Array(18*18*96); cells[1+18*(1+18*80)] = ITEMS.quartz_slab.block;
+    const worker = new Worker('/src/mesh-worker.js',{type:'module'});
+    try {
+      const r = await new Promise((resolve,reject)=>{ const timeout=setTimeout(()=>reject(Error('Slab worker timed out')),15000); worker.onmessage=e=>{clearTimeout(timeout);resolve(e.data);}; worker.onerror=e=>{clearTimeout(timeout);reject(Error(e.message));}; worker.postMessage({job:1,cx:32,cz:32,origin:512,cells,sky:new Uint8Array(18*18),faces:FACES,tiles:stream.tiles,shapes:stream.shapes,flags:stream.flags}); });
+      if(r.error)throw Error(r.error); const ys=Array.from(r.sets[0].p).filter((_,i)=>i%3===1);
+      return {vertices:ys.length,min:Math.min(...ys),max:Math.max(...ys)};
+    } finally { worker.terminate(); }
+  });
+  assert.deepEqual(mesh,{vertices:24,min:80,max:80.5});
+
   // Persist both systems, then load the same browser save in a fresh game.
   await page.evaluate(() => window.__survival.save());
   await page.reload(); await page.waitForFunction(() => !!window.__survival, null, {timeout: 120000});
@@ -142,7 +224,7 @@ try {
   });
   assert.deepEqual(layout, {guideClear: true, nutritionClear: true});
   assert.deepEqual(errors, []);
-  console.log('PASS: renderer, crafting, eating, saturation HUD, goals, contracts, save/reload, keyboard journal and mobile layout.');
+  console.log('PASS: renderer, crafting, eating, saturation HUD, goals, contracts, save/reload, building catalog, block placement, sensor circuits, slab mesh, keyboard journal and mobile layout.');
   console.log(`Screenshots: ${output}`);
 } catch (error) {
   await page?.screenshot({path: resolve(output, 'failure.png')}).catch(() => {});

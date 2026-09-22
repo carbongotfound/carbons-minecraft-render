@@ -1,3 +1,4 @@
+import {renderBuildBook} from './build-book.js';
 import {ITEMS} from './core.js';
 import {LANDMARKS} from './realms.js';
 import {GOALS, CONTRACTS, restoreProgress, requirementValue, completeGoals, claimGoal, deliverContract} from './progression-data.js';
@@ -69,7 +70,7 @@ export function installProgression(upgrade) {
     summary.textContent = `${done} / ${GOALS.length} goals · ${Math.floor(game.xp)} XP · Rewards help you enchant and repair gear.`;
     const meter = document.createElement('progress'); meter.max = GOALS.length; meter.value = done; meter.setAttribute('aria-label', `${done} of ${GOALS.length} goals complete`);
     const tabs = document.createElement('nav'); tabs.className = 'progress-tabs'; tabs.setAttribute('aria-label', 'Journal sections');
-    for (const [id, name] of [['goals', 'Goals'], ['contracts', 'Village requests'], ['landmarks', 'Exploration']]) {
+    for (const [id, name] of [['goals', 'Goals'], ['contracts', 'Village requests'], ['landmarks', 'Exploration'], ['builds', 'Build book']]) {
       const b = button(name, () => { tab = id; renderJournal(); }); b.setAttribute('aria-pressed', tab === id); tabs.append(b);
     }
     root.append(summary, meter, tabs);
@@ -105,6 +106,8 @@ export function installProgression(upgrade) {
           game.xp += result.xp; observe(); api.save(); api.renderHUD(); renderJournal(); api.toast(`Request delivered · +${result.xp} XP`);
         }, locked || delivered || !can)); root.append(card);
       }
+    } else if (tab === 'builds') {
+      renderBuildBook(root);
     } else {
       for (const site of LANDMARKS) {
         const card = document.createElement('article'); card.className = 'progress-card';

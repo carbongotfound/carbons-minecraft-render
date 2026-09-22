@@ -98,6 +98,21 @@ function paint(atlas, tile, kind, base = '#8a8a82', accent = null) {
   } else if (kind === 'metal') {
     rect(0, 0, 16, 16, base); rect(0, 0, 16, 1, '#ffffff88'); rect(0, 0, 1, 16, '#ffffff55');
     rect(15, 0, 1, 16, '#00000044'); rect(0, 15, 16, 1, '#00000055'); rect(2, 2, 12, 1, '#ffffff33');
+  } else if (['concrete', 'polished', 'quartz', 'chiseled', 'pillar', 'cut', 'sensor'].includes(kind)) {
+    rect(0, 0, 16, 16, base);
+    for (let i = 0; i < 48; i++) rect(hash(i, tile, 9) * 16 | 0, hash(i, tile, 10) * 16 | 0, 1, 1, i % 2 ? '#ffffff09' : '#00000009');
+    if (['polished', 'quartz', 'cut', 'chiseled'].includes(kind)) {
+      rect(0, 0, 16, 1, '#ffffff30'); rect(0, 0, 1, 16, '#ffffff30');
+      rect(15, 0, 1, 16, '#00000028'); rect(0, 15, 16, 1, '#00000028');
+    }
+    if (kind === 'cut') { rect(0, 7, 16, 1, '#00000028'); rect(7, 0, 1, 16, '#00000028'); }
+    if (kind === 'pillar') for (let x = 1; x < 16; x += 4) { rect(x, 0, 1, 16, '#00000023'); rect(x + 1, 0, 1, 16, '#ffffff44'); }
+    if (kind === 'chiseled') for (const n of [3, 6]) { rect(n, n, 16-2*n, 1, '#00000030'); rect(n, 15-n, 16-2*n, 1, '#ffffff65'); rect(n, n, 1, 16-2*n, '#00000030'); rect(15-n, n, 1, 16-2*n, '#ffffff65'); }
+    if (kind === 'sensor') {
+      rect(0, 0, 16, 2, '#684c31'); rect(0, 14, 16, 2, '#684c31');
+      rect(0, 0, 2, 16, '#684c31'); rect(14, 0, 2, 16, '#684c31');
+      for (let y = 2; y < 14; y += 4) for (let x = 2; x < 14; x += 4) { rect(x, y, 3, 3, base); rect(x, y, 3, 1, '#ffffff75'); rect(x, y + 2, 3, 1, '#00000035'); }
+    }
   } else if (kind === 'mineral') {
     rect(0, 0, 16, 16, base);
     for (let i = 0; i < 48; i++) rect(hash(i, tile, 9) * 16 | 0, hash(i, tile, 10) * 16 | 0, 2, 1, i % 2 ? '#ffffff1a' : '#00000025');
@@ -119,7 +134,8 @@ export function installVoxelArt(view) {
   ]) paint(atlas, tile, kind, color, accent);
 
   for (const [id, block] of BLOCKS) {
-    let kind = null, color = block.color, accent;
+    let kind = block.style || null, color = block.color, accent;
+    if (kind) { paint(atlas, TILES.get(id), kind, color); continue; }
     if (/ore/.test(block.key)) { kind = 'ore'; [color, accent] = ({44: ['#d9cabb', '#fff2dd'], 55: ['#b52e23', '#f85332'], 56: ['#2c53a3', '#7394ec'], 57: ['#289853', '#70ed94'], 115: ['#b57851', '#59b28e']})[id] || [color, '#eee']; }
     else if (/planks|oak_slab|oak_stairs/.test(block.key)) kind = 'planks';
     else if (/bricks|purpur/.test(block.key)) kind = 'bricks';
@@ -132,10 +148,10 @@ export function installVoxelArt(view) {
     else if (/deepslate|basalt|netherrack|blackstone|end_stone|granite|diorite|andesite|calcite/.test(block.key)) kind = 'mineral';
     if (kind) paint(atlas, TILES.get(id), kind, color, accent);
   }
-  paint(atlas, 180, 'log_top', '#a38458');
-  paint(atlas, 181, 'log_top', '#d7c48e');
+  paint(atlas, 254, 'log_top', '#a38458');
+  paint(atlas, 255, 'log_top', '#d7c48e');
   const previous = globalThis.__carbonTile;
-  globalThis.__carbonTile = (id, face) => (id === 95 || id === 98) && (face === 2 || face === 3) ? (id === 95 ? 180 : 181) : previous?.(id, face);
+  globalThis.__carbonTile = (id, face) => (id === 95 || id === 98) && (face === 2 || face === 3) ? (id === 95 ? 254 : 255) : previous?.(id, face);
   for (const material of [view.material, view.glassMat, view.held?.material].flat()) if (material?.map) {
     material.map.magFilter = material.map.minFilter = Nearest;
     material.map.generateMipmaps = false; material.map.needsUpdate = true;
