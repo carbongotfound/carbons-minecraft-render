@@ -1,0 +1,46 @@
+/* Pixel edges, compact HUD, and a journal that remains usable on small screens. */
+body, button, input { font-family: 'Lucida Console', Consolas, monospace; }
+#guide { cursor: pointer; right: 196px; border: 2px solid #20241b; box-shadow: inset 2px 2px #ffffff15; max-width: 292px; }
+#guide small, #guide strong, #guide span { display: block; }
+#guide small { color: #b5c888; font-size: 9px; letter-spacing: 1px; margin-bottom: 6px; }
+#guide strong { font-size: 13px; color: #f1ebd5; margin-bottom: 5px; }
+#guide span { color: #d1d2c7; font-size: 11px; line-height: 1.6; }
+#guide:focus-visible { outline: 2px solid #e5d48e; }
+#saturationMeter { position: relative; width: 200px; margin: 0 0 0 auto; display: flex; gap: 2px; height: 5px; }
+#saturationMeter i { display: block; flex: 1; height: 4px; background: #20190ed9; border-bottom: 1px solid #0e0b08; }
+#saturationMeter i b { display: block; height: 3px; background: #e8bc4c; box-shadow: 0 1px #705227; }
+#nutritionStatus { position: absolute; top: 7px; right: 0; font-size: 9px; color: #eedfb9; text-shadow: 1px 1px #000; white-space: nowrap; }
+#air { text-align: left; }
+#foodStats { font-size: 10px; color: #f0d98e; margin-top: 6px; text-align: center; }
+#itemName { white-space: nowrap; text-align: center; bottom: 130px; }
+.progress-summary { color: #dedccc; font-size: 12px; }
+#expansionBody > progress { display: block; width: 100%; height: 9px; margin: 10px 0 18px; }
+.progress-tabs { display: flex; flex-wrap: wrap; gap: 6px; margin-bottom: 22px; }
+.progress-tabs button { font-size: 12px; padding: 9px 13px; }
+.progress-tabs button[aria-pressed='true'] { background: #647d44; box-shadow: inset 2px 2px #94ab72, inset -2px -2px #3e512b; }
+#expansionBody h3 { margin: 22px 0 10px; color: #ddc991; font-size: 14px; }
+.progress-card { position: relative; padding: 15px; margin: 8px 0; border: 2px solid #42473a; background: #23291f; box-shadow: inset 1px 1px #ffffff0b; }
+.progress-card.complete { border-color: #668747; background: #293323; }
+.progress-card > strong { color: #f1eedc; font-size: 14px; }
+.progress-card > p { color: #c7cabd; font-size: 12px; line-height: 1.7; margin: 8px 0; }
+.progress-card > small { display: block; font-size: 11px; color: #b6bd9d; }
+.progress-card > button { margin-top: 12px; font-size: 11px; padding: 8px 12px; }
+.progress-card > .request-rewards { color: #e7ca78; }
+.expansion-window { max-height: 90vh; }
+#expansionPanel:has(.progress-summary) .expansion-window { background: #171e16; color: #dedccc; box-shadow: inset 2px 2px #6a725e, inset -2px -2px #0b100b; }
+#expansionPanel:has(.progress-summary) header button { color: #dedccc; }
+#expansionBody { overflow-y: auto; max-height: 70vh; overscroll-behavior: contain; }
+@media (max-width: 760px) {
+  #saturationMeter { width: 168px; }
+  #nutritionStatus { font-size: 8px; }
+  #guide { left: 14px; right: auto; max-width: calc(100vw - 150px); top: 100px; padding: 8px; }
+  #guide span { display: none; }
+  #guide strong { font-size: 11px; margin: 0; }
+  #guide small { font-size: 8px; }
+  #itemName { bottom: 121px; max-width: 90vw; white-space: normal; }
+  #foodStats { font-size: 9px; }
+  .topline { left: 65px; right: 10px; flex-wrap: nowrap; gap: 5px; }
+  .topline #connection { margin-left: 0; max-width: 82px; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .topline button { padding: 6px; font-size: 10px; }
+  .progress-tabs button { flex: 1; padding: 9px 6px; font-size: 11px; }
+}
