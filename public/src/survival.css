@@ -44,3 +44,16 @@ body, button, input { font-family: 'Lucida Console', Consolas, monospace; }
   .topline button { padding: 6px; font-size: 10px; }
   .progress-tabs button { flex: 1; padding: 9px 6px; font-size: 11px; }
 }
+
+#recipeCategory { width: 100%; padding: 6px; margin: 6px 0; font: inherit; font-size: 11px; background: #e0dfd6; color: #20241b; border: 2px solid #64695b; }
+.build-intro { font-size: 12px; line-height: 1.7; color: #c7cabd; }
+.build-projects > summary { cursor: pointer; color: #e7ca78; padding: 10px 0; }
+.build-projects pre { overflow-x: auto; padding: 12px; background: #10170f; color: #d9c68e; font-size: 11px; line-height: 1.7; }
+.build-projects small { margin-top: 10px; line-height: 1.7; }
+.build-search { box-sizing: border-box; width: 100%; font: inherit; padding: 10px; background: #10170f; color: #eee9d6; border: 2px solid #647452; }
+.build-count { display: block; margin: 12px 0; color: #b6bd9d; }
+.build-catalog { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px; }
+.build-material { padding: 12px; background: #23291f; border: 1px solid #42473a; }
+.build-material strong { font-size: 12px; color: #eee9d6; }
+.build-material small { display: block; font-size: 10px; color: #b6bd9d; line-height: 1.7; margin-top: 8px; }
+@media (max-width: 560px) { .build-catalog { grid-template-columns: 1fr; } }
