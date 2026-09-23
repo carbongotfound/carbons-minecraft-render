@@ -1,4 +1,4 @@
-# Carbons Minecraft 0.9.4 Render package
+# Carbons Minecraft 0.9.5 Render package
 
 Full game source plus a long-running Node static server for Render. Multiplayer persistence stays on the existing Supabase project. The game itself does not use this process for multiplayer sockets.
 
@@ -7,6 +7,17 @@ The server binds `0.0.0.0` and `process.env.PORT` (local default `10000`) and se
 Presence v8 uses per-tab sessionStorage, explicit join/leave events, main-menu/tab-close leave only, and a 45-second crash fallback. ESC never leaves.
 
 Terrain v3 smooths rivers/mountains and reduces ravines. `supabase/RESET_WORLD.sql` repeats the shared world reset.
+
+## Account recovery and graphics fixes (0.9.5)
+
+- **Accounts & recovery** is available on the title screen and in the pause menu. Login-code switches preserve both accounts and offer **Undo account switch**. Credentials stay on this browser so closing a tab no longer creates a new account next time.
+- Recovery finds the untouched `carbon-survival-v1` save and other account caches. Choose a backup, review its items/date/account, and confirm the destination. Current progress is backed up before restoring. Device backup downloads contain progress, not login credentials.
+- Cloud saves retain the initial checkpoint and the latest 29 checkpoints (every five minutes, on joining/switching, and before restoring). Restores use account authentication and revision checks. Inactive saved accounts are excluded from temporary session cleanup; the original token can renew the session.
+- This cannot reconstruct inventory that was never uploaded and was deleted from the original browser. An old account ID or player name alone is not authentication. Recovery restores personal progress; shared builds and chest contents are world data.
+- Graphics now offer **Crisp defaults**, **Low lag**, and **Undo graphics change**. Screen-size rendering does not upscale small displays and is capped at 1080p. Optional FXAA/SMAA/MSAA and all fixed resolutions remain available.
+- AA resources are allocated only for the selected mode. Ordinary FOV/control changes do not resize the drawing buffer or rebuild terrain. Only actual nearby torches take part in real-time lighting. Decorations wait for their supporting terrain before appearing.
+
+Verification: `npm test`, `npm run test:account`, `npm run test:paper`, `npm run test:performance`, `npm run test:browser`, `npm run build`. Database regression cases in `supabase/tests/recovery.sql` roll back all fixture changes. Browser network fixtures are isolated from live player data. Performance timings from software WebGL are diagnostics, not claimed FPS on a player's device.
 
 ## Account saves, rendering and journal (0.9.4)
 

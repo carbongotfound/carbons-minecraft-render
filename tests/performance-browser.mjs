@@ -23,6 +23,18 @@ try{
   return {diagnostic,before,after,sourceTriangles,batchTriangles,sourceMeshes:batches.sourceMeshes,batchDraws:batches.draws,reused,stream:g.frontier.stream.stats()};
  });
  assert.ok(result.before.calls>result.after.calls*5,JSON.stringify(result));assert.equal(result.sourceTriangles,result.batchTriangles);assert.equal(result.reused,true);assert.equal(result.stream.captureSlices,0);assert.equal(result.stream.error,null);
+
+ // Compare the former always-on lighting/post stack with the direct render path.
+ const pipeline=await page.evaluate(()=>{
+  const g=__survival.game,v=g.view,r=v.renderer,post=g.graphics.post,lights=v.scene.children.filter(o=>o.isPointLight),gl=r.getContext();
+  const measure=()=>{post.draw(v.scene,v.camera);gl.finish();const times=[];for(let i=0;i<3;i++){r.info.reset();const start=performance.now();post.draw(v.scene,v.camera);gl.finish();times.push(performance.now()-start);}return {calls:r.info.render.calls,medianMs:times.sort((a,b)=>a-b)[1],textures:r.info.memory.textures};};
+  for(const l of lights){l.visible=true;l.intensity=0;}post.configure('fxaa',g.graphics.width,g.graphics.height);const former=measure();
+  for(const l of lights)l.visible=false;post.configure('none',g.graphics.width,g.graphics.height);const current=measure();
+  return {former,current,contextLost:gl.isContextLost(),targets:!!post.sceneTarget||!!post.colorTarget,visibleTorchLights:lights.filter(l=>l.visible).length};
+ });
+ assert.equal(pipeline.contextLost,false);assert.equal(pipeline.targets,false);assert.equal(pipeline.visibleTorchLights,0);assert.equal(pipeline.former.calls-pipeline.current.calls,2);assert.ok(pipeline.current.textures<pipeline.former.textures);
+ await writeFile('artifacts/graphics-pipeline-comparison.json',JSON.stringify(pipeline,null,2));console.log(JSON.stringify(pipeline));
+ await page.evaluate(()=>{document.getElementById('title').hidden=true;});await page.screenshot({path:'artifacts/crisp-world-095.png'});
  // Look at the actual mob models from the front, including their face materials.
  await page.evaluate(async()=>{
   const {Scene,Mesh,BoxGeometry,Material}=await import('/src/engine.js');const a=__survival,g=a.game,v=g.view,scene=new Scene;scene.background=v.scene.background.clone();

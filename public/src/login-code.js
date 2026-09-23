@@ -76,13 +76,14 @@ export function installLoginCode({game, toast}) {
     try {
       const r = await redeemLoginCode(game.net?.client, code);
       if (!r?.token||!r?.id) throw Error('That code did not work.');
-      game.net.expectedAccountId=r.id;
+      game.recovery.stage(r);
       if(r.name)$('name').value=r.name;
       if(!$('name').value)$('name').value='Survivor';
       storeSessionToken(r.token);
       $('loginCode').value = '';
       form.requestSubmit();
     } catch (err) {
+      game.recovery.failed();
       $('joinError').textContent = err.message || 'Could not use that code.';
       $('join').disabled = false;
     } finally {redeemBusy=false;redeem.disabled=false;}

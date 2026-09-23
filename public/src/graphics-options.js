@@ -1,6 +1,6 @@
-export const RESOLUTIONS=['960x540','1280x720','1920x1080','2560x1440','3840x2160'];
+export const RESOLUTIONS=['native','960x540','1280x720','1920x1080','2560x1440','3840x2160'];
 export const AA_MODES=['none','fxaa','smaa','msaa'];
-export const DEFAULT_OPTIONS={sensitivity:1,fov:75,bob:true,shadows:false,renderDistance:4,shadowDistance:48,resolution:'1280x720',aa:'fxaa',maxLights:16,smoothLighting:true,sound:false,viewMode:0};
+export const DEFAULT_OPTIONS={sensitivity:1,fov:75,bob:true,shadows:false,renderDistance:4,shadowDistance:48,resolution:'native',aa:'none',maxLights:8,smoothLighting:true,sound:false,viewMode:0};
 const clamp=(v,a,b)=>Math.max(a,Math.min(b,v));
 export function cleanOptions(value={}){
  const out={...DEFAULT_OPTIONS};
@@ -13,7 +13,8 @@ export function cleanOptions(value={}){
 }
 export function workerCount(threads){return Math.max(1,Math.floor(Math.max(1,Number(threads)||2)*.75));}
 export function renderSize(resolution,viewportWidth,viewportHeight,maxSize=16384){
- const [w,h]=(RESOLUTIONS.includes(resolution)?resolution:DEFAULT_OPTIONS.resolution).split('x').map(Number);
+ if(resolution==='native'){const scale=Math.min(1,1920/viewportWidth,1080/viewportHeight,maxSize/viewportWidth,maxSize/viewportHeight);return [Math.max(1,Math.floor(viewportWidth*scale)),Math.max(1,Math.floor(viewportHeight*scale))];}
+ const [w,h]=(RESOLUTIONS.includes(resolution)?resolution:'1280x720').split('x').map(Number);
  // Fit the selected resolution budget to the viewport without stretching the world.
  const scale=Math.min(w/viewportWidth,h/viewportHeight,maxSize/viewportWidth,maxSize/viewportHeight);
  return [Math.max(1,Math.floor(viewportWidth*scale)),Math.max(1,Math.floor(viewportHeight*scale))];

@@ -1,4 +1,4 @@
-import {cleanOptions,RESOLUTIONS,AA_MODES,renderSize} from './graphics-options.js';
+import {cleanOptions,DEFAULT_OPTIONS,RESOLUTIONS,AA_MODES,renderSize} from './graphics-options.js';
 import {PostProcessing} from './post-processing.js';
 const $=id=>document.getElementById(id);
 export function installGraphics(u){return u.g.graphics=new Graphics(u);}
@@ -14,13 +14,16 @@ class Graphics {
  }
  installUI(){
   const panel=document.createElement('section');panel.id='graphicsSettings';panel.className='cover';panel.hidden=true;
-  panel.innerHTML='<div class="graphics-window"><header><h2>Graphics settings</h2><button id="graphicsClose" aria-label="Close graphics settings">×</button></header><p id="graphicsAccount">Settings save to your account after joining.</p><div id="graphicsControls"></div><p id="graphicsActual"></p><small>Resolution is fitted to your screen shape. Higher resolutions and more lights use more GPU power.</small></div>';
+  panel.innerHTML='<div class="graphics-window"><header><h2>Graphics settings</h2><button id="graphicsClose" aria-label="Close graphics settings">×</button></header><p id="graphicsAccount">Settings save to your account after joining.</p><div id="graphicsPresets"><button id="graphicsClassic">Crisp defaults</button><button id="graphicsFast">Low lag</button><button id="graphicsUndo" disabled>Undo graphics change</button></div><div id="graphicsControls"></div><p id="graphicsActual"></p><small>Resolution is fitted to your screen shape. Higher resolutions and more lights use more GPU power.</small></div>';
   document.body.append(panel);const controls=$('graphicsControls');
   const select=(key,label,values)=>{const row=document.createElement('label');row.textContent=label;const input=document.createElement('select');input.id='graphics-'+key;input.setAttribute('aria-label',label);for(const [value,title]of values){const option=document.createElement('option');option.value=value;option.textContent=title;input.append(option);}input.onchange=()=>{this.u.settings[key]=input.value;this.u.saveSettings();};row.append(input);controls.append(row);};
-  select('resolution','Render resolution',RESOLUTIONS.map(v=>[v,v.replace('x',' × ')]));
+  const preset=values=>{this.undoSettings={...this.u.settings};this.u.settings=cleanOptions({...this.u.settings,...values});$('graphicsUndo').disabled=false;this.u.saveSettings();};
+  $('graphicsClassic').onclick=()=>preset(Object.fromEntries(['resolution','aa','maxLights','smoothLighting','shadows','renderDistance','shadowDistance'].map(k=>[k,DEFAULT_OPTIONS[k]])));$('graphicsFast').onclick=()=>preset({resolution:'960x540',aa:'none',shadows:false,maxLights:2,renderDistance:3,smoothLighting:true});
+  $('graphicsUndo').onclick=()=>{if(!this.undoSettings)return;const current={...this.u.settings};this.u.settings=this.undoSettings;this.undoSettings=current;this.u.saveSettings();};
+  select('resolution','Render resolution',RESOLUTIONS.map(v=>[v,v==='native'?'Screen size (up to 1080p)':v.replace('x',' × ')]));
   select('aa','Anti-aliasing',AA_MODES.map(v=>[v,v==='none'?'None':v==='msaa'?'MSAA (up to 4×)':v.toUpperCase()]));
   const row=document.createElement('label');row.innerHTML='Maximum loaded lights <input id="graphics-maxLights" aria-label="Maximum loaded lights" type="range" min="2" max="128" step="1"><output id="graphics-lightCount"></output>';controls.append(row);
-  $('graphics-maxLights').oninput=e=>{this.u.settings.maxLights=Number(e.target.value);this.u.saveSettings();};
+  $('graphics-maxLights').oninput=e=>{$('graphics-lightCount').textContent=e.target.value;};$('graphics-maxLights').onchange=e=>{this.u.settings.maxLights=Number(e.target.value);this.u.saveSettings();};
   const smooth=document.createElement('button');smooth.id='graphics-smoothLighting';smooth.onclick=()=>{this.u.settings.smoothLighting=!this.u.settings.smoothLighting;this.u.saveSettings();};controls.append(smooth);
   // Move the existing controls, preserving their handlers.
   for(const node of [$('fieldOfView')?.closest('label'),$('viewBob'),$('shadows'),$('viewMode'),$('frontierOptionsV7')])if(node)controls.append(node);
@@ -30,24 +33,27 @@ class Graphics {
   $('graphicsClose').onclick=()=>this.close();
   window.addEventListener('keydown',e=>{if(!panel.hidden&&e.code==='Escape'){e.preventDefault();e.stopImmediatePropagation();this.close();}},true);
  }
- open(){this.fromTitle=!this.g.playing;if(!this.fromTitle){this.u.a.panel='graphics';this.u.a.release();$('pause').hidden=true;}$('graphicsSettings').hidden=false;}
+ open(){this.undoSettings={...this.u.settings};$('graphicsUndo').disabled=false;this.fromTitle=!this.g.playing;if(!this.fromTitle){this.u.a.panel='graphics';this.u.a.release();$('pause').hidden=true;}$('graphicsSettings').hidden=false;}
  close(){$('graphicsSettings').hidden=true;if(!this.fromTitle){this.u.a.panel='pause';$('pause').hidden=false;}}
  resize(){
   const r=this.v.renderer,[w,h]=renderSize(this.u.settings.resolution,innerWidth,innerHeight,r.capabilities?.maxTextureSize||4096);
   this.v.camera.aspect=innerWidth/innerHeight;this.v.camera.updateProjectionMatrix();
-  r.setPixelRatio(1);r.setSize(w,h,false);r.domElement.style.width='100%';r.domElement.style.height='100%';
+  if(this.width!==w||this.height!==h){r.setPixelRatio(1);r.setSize(w,h,false);}r.domElement.style.width='100%';r.domElement.style.height='100%';
   this.post?.configure(this.u.settings.aa,w,h);this.width=r.domElement.width;this.height=r.domElement.height;
   $('graphicsActual').textContent=`Rendering ${this.width} × ${this.height} · ${this.post?this.post.mode.toUpperCase():'Canvas fallback (AA unavailable)'}`;
  }
  apply(){
-  const s=this.u.settings;this.u.viewMode=s.viewMode;this.u.a.setSound(s.sound);$('viewMode').textContent=['First person [F5]','Third person [F5]','Front view [F5]'][s.viewMode];this.u.look.sensitivity=.0022*s.sensitivity;
+  const s=this.u.settings,previous=this.applied||{};this.u.viewMode=s.viewMode;this.u.a.setSound(s.sound);$('viewMode').textContent=['First person [F5]','Third person [F5]','Front view [F5]'][s.viewMode];this.u.look.sensitivity=.0022*s.sensitivity;
   for(const [id,key]of [['mouseSensitivity','sensitivity'],['fieldOfView','fov'],['renderDistance','renderDistance'],['shadowDistance','shadowDistance'],['graphics-resolution','resolution'],['graphics-aa','aa'],['graphics-maxLights','maxLights']])if($(id))$(id).value=s[key];
   $('graphics-lightCount').textContent=String(s.maxLights);$('graphics-smoothLighting').textContent='Smooth lighting: '+(s.smoothLighting?'ON':'OFF');
   $('viewBob').textContent='View bobbing: '+(s.bob?'ON':'OFF');$('shadows').textContent='Shadows: '+(s.shadows?'ON':'OFF');
   $('renderDistanceValue').textContent=s.renderDistance+' chunks';$('shadowDistanceValue').textContent=s.shadowDistance+' blocks';
   this.v.renderer.shadowMap.enabled=s.shadows;if(this.u.sun){this.u.sun.castShadow=s.shadows;const d=s.shadowDistance;Object.assign(this.u.sun.shadow.camera,{left:-d,right:d,top:d,bottom:-d});this.u.sun.shadow.camera.updateProjectionMatrix();}
-  this.resize();const stamp=s.smoothLighting+':'+s.maxLights;if(stamp!==this.lightStamp){this.lightStamp=stamp;this.g.lighting?.invalidate();for(const key of this.v.chunks.keys())this.g.world.dirty.add(key);}
-  this.g.frontier.stream.refresh(true);
+  if(s.resolution!==previous.resolution||s.aa!==previous.aa)this.resize();
+  if(s.maxLights!==previous.maxLights)this.g.lighting?.invalidate();
+  if(s.smoothLighting!==previous.smoothLighting)for(const key of this.v.chunks.keys())this.g.world.dirty.add(key);
+  if(s.renderDistance!==previous.renderDistance)this.g.frontier.stream.refresh(true);
+  this.applied={...s};
  }
  async rpc(settings){const n=this.g.net;const {data,error}=await n.client.rpc('carbon_object_v6',{p_id:n.session.id,p_token:n.session.token,p_op:'settings',p:{settings:settings??null}});if(error)throw Error(error.message);return data;}
  async loadAccount(){

@@ -14,10 +14,20 @@ try{
  await page.locator('#titleGraphics').click();assert.equal(await page.locator('#graphicsSettings').isVisible(),true);
  for(const mode of ['none','fxaa','smaa','msaa']){
   await page.locator('#graphics-aa').selectOption(mode);await page.waitForTimeout(250);
-  const state=await page.evaluate(()=>{const g=window.__survival.game;return {mode:g.graphics.post.mode,samples:g.graphics.post.sceneTarget.samples,programs:g.view.renderer.info.programs.map(p=>p.diagnostics?.runnable!==false)};});
+  const state=await page.evaluate(()=>{const g=window.__survival.game;return {mode:g.graphics.post.mode,samples:g.graphics.post.sceneTarget?.samples||0,programs:g.view.renderer.info.programs.map(p=>p.diagnostics?.runnable!==false)};});
   console.log('AA',mode);assert.equal(state.mode,mode);assert.ok(state.programs.every(Boolean));if(mode==='msaa')assert.ok(state.samples>=2);
   await page.screenshot({path:resolve(`artifacts/aa-${mode}.png`)});
  }
+
+ // Non-render controls must not resize the canvas or remesh the terrain.
+ const churn=await page.evaluate(()=>{const g=__survival.game,r=g.view.renderer,stream=g.frontier.stream;let resized=0,refreshed=0;const size=r.setSize.bind(r),refresh=stream.refresh.bind(stream);r.setSize=(...a)=>{resized++;return size(...a)};stream.refresh=(...a)=>{refreshed++;return refresh(...a)};const before=g.world.dirty.size;g.upgrade.settings.fov=80;g.upgrade.saveSettings();const result={resized,refreshed,dirty:g.world.dirty.size-before};r.setSize=size;stream.refresh=refresh;return result;});
+ assert.deepEqual(churn,{resized:0,refreshed:0,dirty:0});
+ await page.locator('#graphicsFast').click();assert.equal(await page.locator('#graphics-resolution').inputValue(),'960x540');
+ await page.locator('#graphicsUndo').click();assert.equal(await page.locator('#graphics-aa').inputValue(),'msaa');
+ await page.locator('#graphicsClassic').click();
+ const crisp=await page.evaluate(()=>{const g=__survival.game,p=g.graphics.post;return{aa:p.mode,target:!!p.sceneTarget,color:!!p.colorTarget,smaa:!!p.smaa,lights:g.view.scene.children.filter(c=>c.isPointLight&&c.visible).length};});
+ assert.deepEqual(crisp,{aa:'none',target:false,color:false,smaa:false,lights:0});
+ await page.screenshot({path:resolve('artifacts/graphics-recovery-presets.png')});
  await page.locator('#graphics-aa').selectOption('fxaa');
  for(const value of ['960x540','1280x720','1920x1080','2560x1440','3840x2160']){
   await page.locator('#graphics-resolution').selectOption(value);const size=await page.evaluate(()=>{const c=document.getElementById('world');return `${c.width}x${c.height}`;});assert.equal(size,value);console.log('Resolution',value);
