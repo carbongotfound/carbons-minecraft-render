@@ -168,6 +168,7 @@ export class AuthNetwork{
       await new Promise(done=>setTimeout(done,250*Math.pow(2,attempt)));
     }
     if(error)throw Error(error.message);
+    if(n.expectedAccountId&&r?.id!==n.expectedAccountId)throw Error('This login code no longer matches an active account. Make a new code on the original device.');
     console.info('[HTTP] join rpc ok');
     n.session=r;n.position=position;n.members.clear();n.cursor=0;n.channel=make();n.connected=true;
     try{sessionStorage.setItem('carbon-session-v8',r.token)}catch{}
@@ -187,7 +188,7 @@ export class AuthNetwork{
   n.say=async body=>{if(!n.session)throw Error('Rejoin before chatting.');const{data,error}=await this.rawRpc('carbon_survival_say',{p_id:n.session.id,p_token:n.session.token,p_body:body});if(error)throw Error(error.message);n.message(data);this.chatCursor=Math.max(this.chatCursor,Number(data?.id)||0);return data};
   n.close=async(reason='manual')=>{
     const session=n.session;this.stopped=true;clearInterval(this.timer);n.connected=false;await this.closeLive();this.liveAt.clear();
-    if(session){const body={p_id:session.id,p_token:session.token};if(reason==='pagehide'){try{const key=client.supabaseKey,url=client.supabaseUrl+'/rest/v1/rpc/carbon_http_leave_v8';fetch(url,{method:'POST',keepalive:true,headers:{'content-type':'application/json',apikey:key,authorization:'Bearer '+key},body:JSON.stringify(body)}).catch(()=>{})}catch{}}else{try{await this.rawRpc('carbon_http_leave_v8',body)}catch{}}}
+    if(session&&reason!=='account-switch'){const body={p_id:session.id,p_token:session.token};if(reason==='pagehide'){try{const key=client.supabaseKey,url=client.supabaseUrl+'/rest/v1/rpc/carbon_http_leave_v8';fetch(url,{method:'POST',keepalive:true,headers:{'content-type':'application/json',apikey:key,authorization:'Bearer '+key},body:JSON.stringify(body)}).catch(()=>{})}catch{}}else{try{await this.rawRpc('carbon_http_leave_v8',body)}catch{}}}
     n.session=null;n.members.clear();this.roster.clear();this.remoteSeq.clear();this.livePose.clear();this.liveAt.clear();this.lifecycleReady=false;n.hooks.status(false,'Offline');
   };
  }

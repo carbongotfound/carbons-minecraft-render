@@ -21,7 +21,7 @@ export async function issueLoginCode(client, session) {
   if (!session?.id || !session?.token) throw Error('Join the world first.');
   const rpc = await rpcFirst(client, 'carbon_login_code_issue', {p_id: session.id, p_token: session.token});
   if (rpc?.code) return {code: String(rpc.code).toUpperCase(), expires_in: Number(rpc.expires_in) || 720};
-  return post('/api/link-code', {id: session.id, token: session.token});
+  return post('/api/link-code', {id: session.id, token: session.token, name:session.name});
 }
 
 export async function redeemLoginCode(client, code) {
@@ -44,15 +44,19 @@ export function installLoginCode({game, toast}) {
   if (make) make.onclick = async () => {
     make.disabled = true;
     try {
+      game.upgrade.a.save();
+      await game.accountSaves?.flush();
+      await game.graphics?.flush();
       const r = await issueLoginCode(game.net?.client, game.net?.session);
       if (show) {
         show.hidden = false;
-        show.textContent = 'Code ' + r.code + ' · expires in ' + Math.round((r.expires_in || 720) / 60) + ' min. Type it on the other device.';
+        show.textContent = 'Code ' + r.code + ' for ' + game.net.session.name + ' · expires in ' + Math.round((r.expires_in || 720) / 60) + ' min. Type it on the other device.';
       }
       toast?.('Login code: ' + r.code);
     } catch (e) { toast?.(e.message || 'Could not make a code.'); }
     finally { make.disabled = false; }
   };
+  if ($('loginCode')) $('loginCode').addEventListener('input',()=>{$('name').required=!clean($('loginCode').value);});
   if (redeem) redeem.onclick = () => {
     if (!clean($('loginCode')?.value)) {
       if ($('joinError')) $('joinError').textContent = 'Enter the 6-character code.';
@@ -60,24 +64,28 @@ export function installLoginCode({game, toast}) {
     }
     $('joinForm')?.requestSubmit();
   };
-  const form = $('joinForm');
+  const form = $('joinForm');let redeemBusy=false;
   if (form) form.addEventListener('submit', async (e) => {
     const code = clean($('loginCode')?.value);
     if (!code) return;
     e.preventDefault();
     e.stopImmediatePropagation();
+    if(redeemBusy||game.joining)return;redeemBusy=true;redeem.disabled=true;
     $('join').disabled = true;
     $('joinError').textContent = '';
     try {
       const r = await redeemLoginCode(game.net?.client, code);
-      if (!r?.token) throw Error('That code did not work.');
+      if (!r?.token||!r?.id) throw Error('That code did not work.');
+      game.net.expectedAccountId=r.id;
+      if(r.name)$('name').value=r.name;
+      if(!$('name').value)$('name').value='Survivor';
       storeSessionToken(r.token);
       $('loginCode').value = '';
       form.requestSubmit();
     } catch (err) {
       $('joinError').textContent = err.message || 'Could not use that code.';
       $('join').disabled = false;
-    }
+    } finally {redeemBusy=false;redeem.disabled=false;}
   }, true);
   return {issueLoginCode, redeemLoginCode, clean, ALPHA};
 }

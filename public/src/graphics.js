@@ -52,9 +52,9 @@ class Graphics {
  async rpc(settings){const n=this.g.net;const {data,error}=await n.client.rpc('carbon_object_v6',{p_id:n.session.id,p_token:n.session.token,p_op:'settings',p:{settings:settings??null}});if(error)throw Error(error.message);return data;}
  async loadAccount(){
   clearTimeout(this.saveTimer);this.loading=true;const revision=this.revision;
-  try{const data=await this.rpc();if(data?.settings&&revision===this.revision){this.u.settings=cleanOptions(data.settings);this.apply();}else if(!data?.settings){await this.rpc(cleanOptions(this.u.settings));}
+  try{const data=await this.rpc();if(data?.settings&&revision===this.revision){this.u.settings=cleanOptions(data.settings);this.apply();}else if(!data?.settings){let cached;try{cached=JSON.parse(localStorage.getItem('carbon-options-account:'+this.g.net.session.id));}catch{}this.u.settings=cleanOptions(cached||{});this.apply();await this.rpc(this.u.settings);}
    localStorage.setItem('carbon-options-account:'+this.g.net.session.id,JSON.stringify(this.u.settings));$('graphicsAccount').textContent='Settings saved with this account.';
-  }catch{try{const cached=JSON.parse(localStorage.getItem('carbon-options-account:'+this.g.net.session.id));if(cached){this.u.settings=cleanOptions(cached);this.apply();}}catch{}$('graphicsAccount').textContent='Account settings unavailable. Changes stay on this device until reconnected.';}
+  }catch{try{const cached=JSON.parse(localStorage.getItem('carbon-options-account:'+this.g.net.session.id));this.u.settings=cleanOptions(cached||{});this.apply();}catch{}$('graphicsAccount').textContent='Account settings unavailable. Changes stay on this device until reconnected.';}
   finally{this.loading=false;if(revision!==this.revision)this.queueSave();}
  }
  async flush(){clearTimeout(this.saveTimer);if(this.g.net.session)await this.rpc(cleanOptions(this.u.settings));}

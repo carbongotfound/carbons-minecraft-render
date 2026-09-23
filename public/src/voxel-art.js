@@ -41,7 +41,13 @@ function paint(atlas, tile, kind, base = '#8a8a82', accent = null) {
       rect(x, y, 3, 3, '#575958'); rect(x, y, 2, 2, base);
       rect(x, y, 1, 1, accent || '#dedede'); rect(x + 1, y + 2, 2, 1, base);
     }
-  } else if (kind === 'planks' || kind === 'bricks' || kind === 'cobble') {
+  } else if (kind === 'cobble') {
+    rect(0,0,16,16,'#4a4c49');
+    for(const [x,y,w,h] of [[0,0,5,4],[6,0,6,3],[13,0,3,5],[0,5,3,5],[4,4,6,5],[11,4,5,5],[0,11,5,5],[6,10,5,6],[12,10,4,6]]){
+      rect(x,y,w,h,'#777b75');rect(x+1,y,w-1,1,'#a0a29c');rect(x,y+1,1,h-2,'#969a92');rect(x+w-1,y+1,1,h-1,'#60645f');rect(x+1,y+h-1,w-1,1,'#565b55');
+      for(let i=0;i<5;i++)rect(x+(hash(i,x+y)*w|0),y+1+(hash(i,y+x,2)*Math.max(1,h-2)|0),1,1,i%2?'#858982':'#6f746c');
+    }
+  } else if (kind === 'planks' || kind === 'bricks') {
     rect(0, 0, 16, 16, base);
     for (let y = 0; y < 16; y += 4) {
       rect(0, y, 16, 1, '#00000055'); rect(0, y + 1, 16, 1, '#ffffff18');

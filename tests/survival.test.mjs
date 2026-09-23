@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import '../public/src/survival-data.js';
 import {ITEMS, Inventory, RECIPES, patternFor, matchRecipe, craft} from '../public/src/core.js';
 import {restoreNutrition, eatFood, spendExhaustion, tickNutrition} from '../public/src/nutrition.js';
-import {GOALS, CONTRACTS, restoreProgress, completeGoals, claimGoal, deliverContract} from '../public/src/progression-data.js';
+import {CONTRACTS, restoreProgress, deliverContract} from '../public/src/progression-data.js';
 
 test('old saves receive five saturation, capped by hunger; malformed saves stay finite', () => {
   assert.deepEqual(restoreNutrition({hunger: 3}), {hunger: 3, saturation: 3, exhaustion: 0});
@@ -66,39 +66,27 @@ test('mixed wood remains valid for tools', () => {
   const inv = new Inventory(); inv.add('spruce_planks', 1); inv.add('birch_planks', 2); inv.add('stick', 2);
   assert.equal(craft(inv, r, true), true); assert.equal(inv.count('wooden_pickaxe'), 1);
 });
-test('goal and contract requirements reference existing content', () => {
-  assert.equal(new Set(GOALS.map(g => g.id)).size, GOALS.length);
-  for (const g of GOALS) for (const r of g.requirements) if (r.kind === 'seen' || r.kind === 'eaten') assert.ok(ITEMS[r.id], r.id);
-  for (const c of CONTRACTS) { assert.ok(GOALS.some(g => g.id === c.unlock)); for (const id of [...Object.keys(c.needs), ...Object.keys(c.rewards)]) assert.ok(ITEMS[id], id); }
+test('village requests reference existing supplies and rewards', () => {
+  for (const c of CONTRACTS) for (const id of [...Object.keys(c.needs), ...Object.keys(c.rewards)]) assert.ok(ITEMS[id], id);
 });
-test('goal rewards can be collected only once, including after save/reload', () => {
-  let state = restoreProgress(); state.seen.log = 1; completeGoals(state);
-  assert.equal(claimGoal(state, 'wood'), 2); assert.equal(claimGoal(state, 'wood'), 0);
-  state = restoreProgress(JSON.parse(JSON.stringify(state)));
-  assert.equal(claimGoal(state, 'wood'), 0); assert.equal(claimGoal(state, 'dragon'), 0);
+test('old goal data is discarded while completed deliveries are preserved', () => {
+  assert.deepEqual(restoreProgress({seen:{log:3},completed:{wood:1},claimed:{wood:1},pinned:'stone',contracts:{timber:1}}), {contracts:{timber:1}});
 });
-test('Netherite ingots do not complete the equipment upgrade goal', () => {
-  const state = restoreProgress(); state.seen.netherite_ingot = 1; completeGoals(state);
-  assert.equal(state.completed.netherite, undefined);
-  state.seen.netherite_pickaxe = 1; completeGoals(state); assert.equal(state.completed.netherite, 1);
-});
-test('contracts require their unlock and all supplies, and award only once', () => {
+test('contracts require supplies and award only once across reloads', () => {
   const state = restoreProgress(), inv = new Inventory(); inv.add('log', 16); inv.add('cobble', 32);
-  assert.equal(deliverContract(state, inv, 'timber').ok, false); assert.equal(inv.count('log'), 16);
-  state.completed.workbench = 1;
   assert.deepEqual(deliverContract(state, inv, 'timber'), {ok: true, xp: 8});
   assert.equal(inv.count('log'), 0); assert.equal(inv.count('emerald'), 3); assert.equal(inv.count('bread'), 4);
-  assert.equal(deliverContract(state, inv, 'timber').ok, false);
+  assert.equal(deliverContract(restoreProgress(JSON.parse(JSON.stringify(state))), inv, 'timber').ok, false);
 });
 test('a full inventory never loses contract supplies or the reward', () => {
-  const state = restoreProgress(); state.completed.workbench = 1;
+  const state = restoreProgress();
   const inv = new Inventory(); inv.add('log', 64); inv.add('cobble', 64); inv.add('dirt', 34 * 64);
   const before = JSON.stringify(inv.slots);
   assert.equal(deliverContract(state, inv, 'timber').ok, false);
   assert.equal(JSON.stringify(inv.slots), before); assert.equal(state.contracts.timber, undefined);
 });
 test('missing supplies never partially consume a contract', () => {
-  const state = restoreProgress(); state.completed.workbench = 1;
+  const state = restoreProgress();
   const inv = new Inventory(); inv.add('log', 16);
   assert.equal(deliverContract(state, inv, 'timber').ok, false); assert.equal(inv.count('log'), 16);
 });

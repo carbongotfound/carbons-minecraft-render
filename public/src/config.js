@@ -1,1 +1,1 @@
-export const BUILD_VERSION='survival-0.9.3';
+export const BUILD_VERSION='survival-0.9.4';

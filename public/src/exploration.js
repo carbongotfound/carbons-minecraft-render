@@ -43,7 +43,7 @@ export function installExploration(upgrade) {
       biome = next; banner.textContent = BIOMES[next]?.[0] || (next === 'nether' ? 'The Nether' : 'The End');
       banner.hidden = false; hideAt = now + 4000;
     }
-    if (found.length) { api.save(); api.toast(`Discovered: ${found.join(' · ')}. Recorded in Progress [J] → Exploration.`); }
+    if (found.length) { api.save(); api.toast(`Discovered: ${found.join(' · ')}. Recorded in Journal [J] → Exploration.`); }
   };
 }
 export function renderDiscoveries(root, game) {
