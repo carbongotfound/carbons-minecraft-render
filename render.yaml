@@ -8,8 +8,8 @@ services:
     plan: free
     branch: main
     # No npm packages to install. Native Node still requires a buildCommand.
-    buildCommand: "true"
-    startCommand: node server.mjs
+    buildCommand: node scripts/precompress.mjs
+    startCommand: node --max-old-space-size=128 server.mjs
     healthCheckPath: /healthz
     envVars:
       - key: NODE_ENV

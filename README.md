@@ -1,4 +1,4 @@
-# Carbons Minecraft 0.9.2 Render package
+# Carbons Minecraft 0.9.3 Render package
 
 Full game source plus a long-running Node static server for Render. Multiplayer persistence stays on the existing Supabase project. The game itself does not use this process for multiplayer sockets.
 
@@ -7,6 +7,16 @@ The server binds `0.0.0.0` and `process.env.PORT` (local default `10000`) and se
 Presence v8 uses per-tab sessionStorage, explicit join/leave events, main-menu/tab-close leave only, and a 45-second crash fallback. ESC never leaves.
 
 Terrain v3 smooths rivers/mountains and reduces ravines. `supabase/RESET_WORLD.sql` repeats the shared world reset.
+
+## Paper requests (0.9.3)
+
+Both photographed feature lists are implemented. See [the complete checklist](docs/PAPER_FEATURES.md) for controls and verification.
+
+Highlights: recipe diagrams and furnace recipes, deepslate → lava, bone → bone meal, hydrated crop growth, a two-second player-drop delay, account-saved settings, 75% CPU worker allocation, real None/FXAA/SMAA/MSAA modes, render resolutions from 540p to 4K, smooth lighting, 2–128 loaded light sources, and reduced work while inactive. Open **Graphics settings** from the title or pause menu. **Ctrl+F3** shows actual render size.
+
+Two additive migrations store settings privately, add the drop-delay flag and register furnace/growth data. Both are applied; no world reset is required. The existing shared day/night and sleep checks remain in the test suite.
+
+The Render build now precompresses static assets; Node runs with a 128 MB V8 heap cap and bounded caches/connections. A local 50-request test measured approximately 57 MB RSS and 0.025 average CPU cores at roughly ten asset requests/second. This is a measured workload, not a production capacity guarantee.
 
 ## Shared world time and exploration (0.9.2)
 

@@ -58,7 +58,7 @@ export class AuthNetwork{
   this.install();
  }
  async prepare(){return this}
- pose(){const g=this.g,a=this.u.a,s=a.selected();return{x:g.player.x,y:g.player.y,z:g.player.z,yaw:g.player.yaw,pitch:g.player.pitch,dimension:g.dimension||'overworld',held:s?.id||'',shield:!!g.equipment?.offhand&&a.holdingUse,alive:!g.dead,visible:!document.hidden}}
+ pose(){const g=this.g,a=this.u.a,s=a.selected();return{x:g.player.x,y:g.player.y,z:g.player.z,yaw:g.player.yaw,pitch:g.player.pitch,dimension:g.dimension||'overworld',held:s?.id||'',shield:!!g.equipment?.offhand&&a.holdingUse,alive:!g.dead,visible:!document.hidden&&g.focused!==false}}
  livePacket(){const p=this.n.packet();p.dimension=this.g.dimension||'overworld';p.version=8;return p}
  connectedLabel(){return this.poseLive?'Connected · live':'Connected · HTTP'}
  enableRealtime(){
@@ -194,7 +194,7 @@ export class AuthNetwork{
  mobSnapshot(){const m=this.u.a.mobs;if(!m?.authority||performance.now()-this.lastMobPublish<100)return null;this.lastMobPublish=performance.now();const out=[];for(const v of m.mobs.values()){if(out.length>=64)break;if(!v||!finite({...v,pitch:v.pitch||0})||!Number.isFinite(v.hp))continue;const o={id:String(v.id).slice(0,96),kind:v.kind,x:+v.x.toFixed(3),y:+v.y.toFixed(3),z:+v.z.toFixed(3),yaw:+(v.yaw||0).toFixed(3),pitch:+(v.pitch||0).toFixed(3),hp:+v.hp};for(const k of ['phase','fuse','panic','regrow','vy','babyUntil','breedCooldown','loveUntil','aggro'])if(Number.isFinite(v[k]))o[k]=+v[k];for(const k of ['burning','sheared','profession','crystalIndex'])if(v[k]!==undefined)o[k]=v[k];out.push(o)}return out}
  async poll(force=false){
   const n=this.n;if(!n.session||this.stopped)return;
-  const now=performance.now(),min=document.hidden?800:this.poseLive?200:80;
+  const now=performance.now(),min=document.hidden?1500:this.g.focused===false?600:this.poseLive?200:80;
   if(!force&&now-this.lastPoll<min)return;
   if(this.pollTask)return this.pollTask;
   const mob=this.getHost()===n.session.id?this.mobSnapshot():null;
