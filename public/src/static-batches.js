@@ -49,5 +49,13 @@ export function installStaticBatches(game){
  const sync=u.syncObjects.bind(u);u.syncObjects=()=>{sync();base.sync(u.objects);};
  const update=d.update.bind(d);let stamp=-1;d.update=t=>{update(t);if(stamp!==d.last){stamp=d.last;extra.sync(d.objects,o=>![B.PORTAL,B.PORTAL_Z,B.BREWING_STAND,B.CAMPFIRE,B.WIRE,B.REPEATER].includes(o.id));}};
  const clear=d.clear.bind(d);d.clear=()=>{clear();base.clear();extra.clear();stamp=-1;};
+ // Decorations are discovered before their terrain finishes meshing. Keep them
+ // hidden until their supporting chunk exists, so grass does not float in sky.
+ const frame=game.view.update.bind(game.view);game.view.update=(...args)=>{
+  const offset=game.frontier.stream.origin()/16,loaded=(x,z)=>game.view.chunks.has((x+offset)+','+(z+offset));
+  for(const batch of [base,extra])for(const [key,entry]of batch.chunks){const[x,z]=key.split(',').map(Number);entry.group.visible=loaded(x,z);}
+  for(const o of d.objects.values())if(o.group.parent)o.group.visible=loaded(Math.floor(o.group.position.x/16),Math.floor(o.group.position.z/16));
+  return frame(...args);
+ };
  game.staticBatches={base,extra};
 }
