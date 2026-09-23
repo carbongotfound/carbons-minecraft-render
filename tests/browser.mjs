@@ -29,7 +29,6 @@ try {
   async function startFixture() {
     await page.evaluate(async () => {
       const a = window.__survival, g = a.game;
-      const {WORLD_EPOCH} = await import('/src/config.js');
       g.net.tick = () => {}; g.net.close = async () => {};
       g.net.session = {id: 'browser-test', name: 'Survivor', token: 'local-only'};
       g.net.edit = async (x, y, z, b) => { g.world.set(x, y, z, b); return true; };
@@ -38,7 +37,7 @@ try {
       g.upgrade.outbox.length = 0; g.expansion.tick = () => {}; g.paper.tick = () => {};
       g.frontier.movement = () => ({x: 0, z: 0}); g.frontier.melee = () => false;
       g.frontier.map.tick = () => {}; a.mobs.update = () => {};
-      g.clockOffset = WORLD_EPOCH + 300000 - Date.now();
+      g.clock.sync({server_ms:Math.max(Date.now(),g.clock.lastServer+1),world_ms:300000,day_length_ms:1200000},performance.now());
       g.playing = true; g.health = 20;
       document.getElementById('title').hidden = true;
       document.getElementById('hud').hidden = false;
@@ -138,7 +137,6 @@ try {
     const {ITEMS} = await import('/src/core.js');
     const {DAYLIGHT_SENSOR, NIGHT_SENSOR} = await import('/src/building-data.js');
     const {B} = await import('/src/expansion-data.js');
-    const {WORLD_EPOCH} = await import('/src/config.js');
     const originalEdit = e.edit, originalBatch = e.batch, originalAuthority = Object.getOwnPropertyDescriptor(a.mobs, 'authority');
     let revision = 1000000000;
     e.edit = async (x,y,z,block,meta={}) => { g.world.apply({x,y,z,block,meta,revision:++revision}); return true; };
@@ -161,9 +159,9 @@ try {
     for (const [x,b] of [[6,NIGHT_SENSOR],[7,B.WIRE],[8,B.WIRE],[9,B.LAMP]]) await e.edit(x,81,0,b);
     const oldNodes = e.circuitNodes; e.circuitNodes = new Set(['6,81,0','7,81,0','8,81,0','9,81,0']);
     Object.defineProperty(a.mobs, 'authority', {configurable:true, value:true}); e.nextCircuit = 0;
-    g.clockOffset = WORLD_EPOCH + 900000 - Date.now(); e.runCircuits(performance.now()); await wait();
+    g.clock.sync({server_ms:Math.max(Date.now(),g.clock.lastServer+1),world_ms:900000,day_length_ms:1200000},performance.now()); e.runCircuits(performance.now()); await wait();
     const atNight = g.world.get(9,81,0);
-    g.clockOffset = WORLD_EPOCH + 300000 - Date.now(); e.nextCircuit = 0; e.runCircuits(performance.now()); await wait();
+    g.clock.sync({server_ms:Math.max(Date.now(),g.clock.lastServer+1),world_ms:300000,day_length_ms:1200000},performance.now()); e.nextCircuit = 0; e.runCircuits(performance.now()); await wait();
     const atDay = g.world.get(9,81,0);
     g.world.set(6,82,0,3); g.upgrade.updateColumn(6,0); e.nextCircuit = 0; e.runCircuits(performance.now()); await wait();
     const roofed = g.world.get(9,81,0); g.world.set(6,82,0,0); g.upgrade.updateColumn(6,0);

@@ -1,3 +1,4 @@
+import {surfaceHeight} from './frontier-gen.js';
 import {Mesh,Group,BoxGeometry,PlaneGeometry,Material,BasicMaterial,CanvasTexture,SRGB,Nearest,Color} from './engine.js';
 import {B,BLOCKS,TILES,blockShape,keyOf,parseKey,CARDINAL} from './expansion-data.js';
 import {hash,ITEMS} from './core.js';
@@ -26,8 +27,16 @@ export function part(parent,mat,s,p){const m=new Mesh(box,mat);m.scale.set(...s)
 export class DecorationRenderer{
  constructor(e){this.e=e;this.objects=new Map;this.mats=new Map;this.last=0;}
  mat(color,emissive=false){const k=color+emissive;if(this.mats.has(k))return this.mats.get(k);const m=emissive?new BasicMaterial({color,transparent:color.length>7,opacity:color.length>7?.6:1}):new Material({color});this.mats.set(k,m);return m;}
- clear(){for(const o of this.objects.values())o.group.parent?.remove(o.group);this.objects.clear();}
- update(t){const e=this.e,w=e.g.world;if(t-this.last>600){this.last=t;const keep=new Set;for(const key of w.v4Special||[]){const[x,y,z]=parseKey(key),id=w.get(x,y,z);if(!DECOR.has(id)||Math.hypot(x-e.g.player.x,z-e.g.player.z)>65)continue;keep.add(key);let o=this.objects.get(key);if(o?.id!==id){if(o)o.group.parent?.remove(o.group);o=this.make(x,y,z,id);this.objects.set(key,o);}o.power=(e.circuitState?.powers.get(key)||0);if(id===B.WIRE)o.wire.material=this.mat(o.power?'#e95833':'#6f241f',!!o.power);if(id===B.REPEATER)o.dot.material=this.mat(e.circuitMemory.get(key)?.output?'#f26435':'#673528',true);}
+ clear(){this.naturalPatch=null;for(const o of this.objects.values())o.group.parent?.remove(o.group);this.objects.clear();}
+ update(t){const e=this.e,w=e.g.world;if(t-this.last>600){this.last=t;
+ const px=Math.floor(e.g.player.x),pz=Math.floor(e.g.player.z),patch=(px>>4)+','+(pz>>4);
+ if(e.g.dimension==='overworld'&&this.naturalPatch!==patch){this.naturalPatch=patch;w.v4Special??=new Set;
+  for(let x=Math.max(-511,px-24);x<=Math.min(511,px+24);x++)for(let z=Math.max(-511,pz-24);z<=Math.min(511,pz+24);z++){
+   if(Math.max(Math.abs(x),Math.abs(z))<134)continue;const y=surfaceHeight(x,z)+1,id=w.get(x,y,z);
+   if(id===B.FLOWER||id===B.MUSHROOM)w.v4Special.add(keyOf(x,y,z));
+  }
+ }
+ const keep=new Set;for(const key of w.v4Special||[]){const[x,y,z]=parseKey(key),id=w.get(x,y,z);if(!DECOR.has(id)||Math.hypot(x-e.g.player.x,z-e.g.player.z)>65)continue;keep.add(key);let o=this.objects.get(key);if(o?.id!==id){if(o)o.group.parent?.remove(o.group);o=this.make(x,y,z,id);this.objects.set(key,o);}o.power=(e.circuitState?.powers.get(key)||0);if(id===B.WIRE)o.wire.material=this.mat(o.power?'#e95833':'#6f241f',!!o.power);if(id===B.REPEATER)o.dot.material=this.mat(e.circuitMemory.get(key)?.output?'#f26435':'#673528',true);}
  for(const[k,o]of this.objects)if(!keep.has(k)){o.group.parent?.remove(o.group);this.objects.delete(k);}}
  for(const o of this.objects.values()){if(o.id===B.PORTAL||o.id===B.PORTAL_Z){o.group.children[0].material.opacity=.42+Math.sin(t*.002+o.x)*.12;o.group.children[0].scale.x=1+.025*Math.sin(t*.003);}if(o.id===B.BREWING_STAND&&o.bottle)o.bottle.rotation.y=t*.001;if(o.id===B.CAMPFIRE&&o.flame)o.flame.scale.y=.8+.2*Math.sin(t*.02);}
  }

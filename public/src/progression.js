@@ -1,3 +1,4 @@
+import {renderDiscoveries} from './exploration.js';
 import {renderBuildBook} from './build-book.js';
 import {ITEMS} from './core.js';
 import {LANDMARKS} from './realms.js';
@@ -109,6 +110,7 @@ export function installProgression(upgrade) {
     } else if (tab === 'builds') {
       renderBuildBook(root);
     } else {
+      renderDiscoveries(root, game);
       for (const site of LANDMARKS) {
         const card = document.createElement('article'); card.className = 'progress-card';
         const title = document.createElement('strong'); title.textContent = site.name;

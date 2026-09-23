@@ -1,4 +1,4 @@
-# Carbons Minecraft 0.9.1 Render package
+# Carbons Minecraft 0.9.2 Render package
 
 Full game source plus a long-running Node static server for Render. Multiplayer persistence stays on the existing Supabase project. The game itself does not use this process for multiplayer sockets.
 
@@ -7,6 +7,20 @@ The server binds `0.0.0.0` and `process.env.PORT` (local default `10000`) and se
 Presence v8 uses per-tab sessionStorage, explicit join/leave events, main-menu/tab-close leave only, and a 45-second crash fallback. ESC never leaves.
 
 Terrain v3 smooths rivers/mountains and reduces ravines. `supabase/RESET_WORLD.sql` repeats the shared world reset.
+
+## Shared world time and exploration (0.9.2)
+
+- Day/night, weather, the clock item and daylight sensors now read a server clock sample included in every existing HTTP poll. A monotonic browser timer advances between samples; device date changes and old saved offsets cannot change world time. Older responses cannot undo a more recent sleep update.
+- Sleeping in an Overworld bed advances the database clock for everyone. The bed RPC returns the new time immediately; other players receive it in their next poll. Daytime bed use sets a respawn point without skipping another day.
+- Hostile mobs can spawn in dark caves during the day. Spawns need solid support, room for the mob, no nearby torches and at least 24 blocks from every player. Torches also suppress dungeon spawners.
+- Spiders are neutral in open daylight until hit. Creepers have 20 health and no hidden bonus damage against them. Burning undead extinguish at night, in water and in rain. Farm animals follow food held by nearby players, including guests.
+- Fixed breeding between ordinary adults with no cooldown fields. Baby growth takes 20 real minutes; age/cooldown state is included in both multiplayer snapshots and host handoffs.
+- Outer terrain has taller conical spruce trees, frozen taiga water, desert cacti, forest flowers and swamp mushrooms. The central valley's generated terrain is retained; saved block edits still override natural terrain.
+- A biome arrival banner and **Progress [J] → Exploration** track six biomes and 20 underground sites. Sites are recorded only when you descend into them, and discoveries survive reloading.
+
+The migration `supabase/migrations/20260923022247_shared_world_clock.sql` has been applied to the linked Supabase project. It preserves the current epoch, world offset and all saves. The private snapshot helper has no public execution grant; existing RPC session and proximity checks remain in place.
+
+Verification includes `npm test`, `npm run test:browser`, and `npm run test:world`. The world browser test runs two real game clients with computer clocks 16 days apart through the HTTP poll code, then checks shared nighttime, sleep, morning, weather, animal breeding and exploration persistence. Browser HTTP responses are isolated fixtures. `supabase/tests/world_clock.sql` separately exercises the live database RPCs with two temporary players and a bed, verifies sleep propagation and rejects forged offsets/invalid sessions, then rolls back every fixture.
 
 ## Building and redstone update (0.9.1)
 
