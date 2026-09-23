@@ -10,7 +10,7 @@ const server = spawn(process.execPath,['server.mjs'],{env:{...process.env,PORT:p
 let browser;
 try {
   for(let i=0;i<100;i++){try{if((await fetch(`http://127.0.0.1:${port}/healthz`)).ok)break;}catch{}await new Promise(r=>setTimeout(r,100));}
-  browser = await chromium.launch({headless:true,args:['--enable-unsafe-swiftshader']});
+  browser = await chromium.launch({headless:true,args:['--enable-unsafe-swiftshader','--use-angle=swiftshader']});
   let worldBase = 900000, serverBase = Date.now();
   const sample = () => ({server_ms:Date.now(),world_ms:worldBase+Date.now()-serverBase,day_length_ms:1200000});
   const pages=[], errors=[];

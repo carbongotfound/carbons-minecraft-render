@@ -1,4 +1,4 @@
-# Carbons Minecraft 0.9.3 Render package
+# Carbons Minecraft 0.9.4 Render package
 
 Full game source plus a long-running Node static server for Render. Multiplayer persistence stays on the existing Supabase project. The game itself does not use this process for multiplayer sockets.
 
@@ -7,6 +7,19 @@ The server binds `0.0.0.0` and `process.env.PORT` (local default `10000`) and se
 Presence v8 uses per-tab sessionStorage, explicit join/leave events, main-menu/tab-close leave only, and a 45-second crash fallback. ESC never leaves.
 
 Terrain v3 smooths rivers/mountains and reduces ravines. `supabase/RESET_WORLD.sql` repeats the shared world reset.
+
+## Account saves, rendering and journal (0.9.4)
+
+- Removed the 34-goal system, tracker, completion prompts and goal XP claims. **Journal [J]** still contains exploration, the building catalog and village supply requests. Requests only require their supplies; delivered requests and previously earned XP survive the update.
+- Survival state now saves under the authenticated account ID, locally and in the database. Login-code creation flushes inventory and settings first. Redemption checks the returned account ID, works without typing a name and restores inventory, equipment, XP, nutrition, location and journal state. A device that was superseded cannot overwrite the new device's save.
+- The old browser-wide save is kept intact. If its ownership cannot be established, the original device offers an explicit import into the named account. Code redemption never imports the receiving device's unrelated legacy save.
+- Decorative meshes batch by chunk/material. A fixed-camera browser comparison reduced **1,821 draw calls to 73**, while retaining all 42,480 decorative triangles. Worker geometry uses transferred buffers directly. Dense chunks copy contiguous rows instead of sampling 31,104 cells through the world accessor on the main thread. Worker allocation remains 75% of CPU threads.
+- Light changes only rebuild affected chunks, distant light candidates avoid terrain generation, and failed drop uploads retry with a delay instead of a tight loop.
+- Corrected zombie/skeleton/creeper front-face textures, narrowed skeleton limbs, revised farm-animal proportions and added distinct pig snouts, cow markings, sheep coats and chicken feet. Cobblestone now uses irregular stones. These are original Minecraft-inspired models/textures, not full Minecraft parity.
+
+Verification: `npm test`, `npm run test:browser`, `npm run test:paper`, `npm run test:account`, `npm run test:performance`, `npm run test:world`. Browser checks use explicit software WebGL for reproducible CI rendering; draw-call savings are not a claim about FPS on every device. Account UI tests isolate database HTTP and exercise the real Render code service. The live database save test in `supabase/tests/account_saves.sql` verifies token isolation, handoff and stale-writer rejection, then rolls back its fixtures.
+
+The additive `account_survival_saves` migration is applied. Its private table has RLS and no client grants; its public RPC deliberately uses the existing game's ID/token authentication model. The Supabase advisor's SECURITY DEFINER notice is expected for that custom-auth endpoint; see [the advisor explanation](https://supabase.com/docs/guides/database/database-linter?lint=0028_anon_security_definer_function_executable). No world reset is performed.
 
 ## Paper requests (0.9.3)
 

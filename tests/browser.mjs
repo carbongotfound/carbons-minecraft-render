@@ -16,7 +16,7 @@ try {
     try { if ((await fetch(`http://127.0.0.1:${port}/healthz`)).ok) break; } catch {}
     await new Promise(r => setTimeout(r, 100));
   }
-  browser = await chromium.launch({headless: true, args: ['--enable-unsafe-swiftshader']});
+  browser = await chromium.launch({headless: true, args: ['--enable-unsafe-swiftshader','--use-angle=swiftshader']});
   const context = await browser.newContext({viewport: {width: 1440, height: 900}});
   await context.route(/supabase\.(co|in)/, route => route.abort());
   page = await context.newPage(); const errors = [];
@@ -93,13 +93,11 @@ try {
     a.renderHUD();
   });
   await page.locator('#journalButton').click();
-  assert.equal(await page.locator('.progress-card').count(), 34);
-  const xp = await page.evaluate(() => window.__survival.game.xp);
-  await page.getByRole('button', {name: 'Collect 2 XP', exact: true}).click();
-  assert.equal(await page.evaluate(() => window.__survival.game.xp), xp + 2);
-  await page.getByRole('button', {name: 'Track goal', exact: true}).first().click();
-  assert.ok(await page.evaluate(() => window.__survival.game.progression.state.pinned));
-  await page.screenshot({path: resolve(output, 'progression.png')});
+  assert.equal(await page.locator('#guide').count(), 0);
+  assert.equal(await page.getByRole('button', {name: 'Goals', exact: true}).count(), 0);
+  assert.equal(await page.getByRole('button', {name: /Track goal|Collect.*XP/}).count(), 0);
+  assert.equal(await page.getByRole('button', {name: 'Exploration', exact: true}).getAttribute('aria-pressed'), 'true');
+  await page.screenshot({path: resolve(output, 'journal.png')});
 
   await page.getByRole('button', {name: 'Village requests', exact: true}).click();
   await page.getByRole('button', {name: 'Deliver supplies', exact: true}).first().click();
@@ -191,7 +189,7 @@ try {
   await page.evaluate(() => window.__survival.save());
   await page.reload(); await page.waitForFunction(() => !!window.__survival, null, {timeout: 120000});
   assert.equal(await page.evaluate(() => window.__survival.game.saturation), 12.8);
-  assert.equal(await page.evaluate(() => window.__survival.game.progression.state.claimed.wood), 1);
+  assert.deepEqual(await page.evaluate(() => Object.keys(window.__survival.game.progression.state)), ['contracts']);
   assert.equal(await page.evaluate(() => window.__survival.game.progression.state.contracts.timber), 1);
   await startFixture();
 
@@ -216,13 +214,11 @@ try {
   await page.screenshot({path: resolve(output, 'survival-mobile.png')});
   const layout = await page.evaluate(() => {
     const rect = id => document.getElementById(id).getBoundingClientRect();
-    const guide = rect('guide'), map = rect('worldMapMini');
-    return {guideClear: guide.right <= map.left || guide.top >= map.bottom,
-      nutritionClear: rect('nutritionStatus').top >= rect('hunger').bottom};
+    return {nutritionClear: rect('nutritionStatus').top >= rect('hunger').bottom};
   });
-  assert.deepEqual(layout, {guideClear: true, nutritionClear: true});
+  assert.deepEqual(layout, {nutritionClear: true});
   assert.deepEqual(errors, []);
-  console.log('PASS: renderer, crafting, eating, saturation HUD, goals, contracts, save/reload, building catalog, block placement, sensor circuits, slab mesh, keyboard journal and mobile layout.');
+  console.log('PASS: renderer, crafting, eating, saturation HUD, journal without goals, contracts, save/reload, building catalog, block placement, sensor circuits, slab mesh, keyboard journal and mobile layout.');
   console.log(`Screenshots: ${output}`);
 } catch (error) {
   await page?.screenshot({path: resolve(output, 'failure.png')}).catch(() => {});

@@ -187,7 +187,7 @@ const handleLink = async (req, res, pathname) => {
     }
     if(linkCodes.size>=1024)return json(res,503,{error:'Login codes are busy. Try again shortly.'});
     const code = makeCode();
-    linkCodes.set(code, {id, token, exp: Date.now() + LINK_TTL_MS, used: false});
+    linkCodes.set(code, {id, token, name:String(body.name||'').replace(/[<>\x00-\x1f]/g,'').slice(0,18), exp: Date.now() + LINK_TTL_MS, used: false});
     return json(res, 200, {code, expires_in: 720});
   }
   if (pathname === '/api/link-redeem') {
@@ -197,7 +197,7 @@ const handleLink = async (req, res, pathname) => {
     if (!row || row.used || row.exp < Date.now()) return json(res, 400, {error: 'Code expired or already used'});
     row.used = true;
     linkCodes.delete(code);
-    return json(res, 200, {id: row.id, token: row.token});
+    return json(res, 200, {id: row.id, token: row.token, name:row.name});
   }
   return json(res, 404, {error: 'Not found'});
 };

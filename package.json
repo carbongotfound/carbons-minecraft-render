@@ -1,6 +1,6 @@
 {
   "name": "carbons-minecraft-render",
-  "version": "0.9.3",
+  "version": "0.9.4",
   "private": true,
   "type": "module",
   "engines": {
@@ -13,6 +13,8 @@
     "test:world": "node tests/world-browser.mjs",
     "build": "node scripts/precompress.mjs",
     "test:paper": "node tests/paper-browser.mjs",
+    "test:account": "node tests/account-browser.mjs",
+    "test:performance": "node tests/performance-browser.mjs",
     "test:server": "node tests/server-budget.mjs"
   },
   "devDependencies": {
