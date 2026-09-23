@@ -1,5 +1,4 @@
 import {MAX_BLOCK_ID,DAYLIGHT_SENSOR,NIGHT_SENSOR} from './building-data.js';
-import {WORLD_EPOCH} from './config.js';
 import {World,View,Network,BlockInfo,Vector3,Mesh,BoxGeometry,PlaneGeometry,Material,BasicMaterial,Group,Color,meshData,makeGeometry,addFace,FACES} from './engine.js';
 import {ITEMS,RECIPES,SMELTING,FUEL,Inventory,heightAt,hash} from './core.js';
 import {shape} from './extra-data.js';
@@ -65,7 +64,7 @@ export class Expansion{
   if(base==='eye_of_ender'){stop();if(t?.b===B.END_FRAME){this.perform(async()=>{await this.edit(t.x,t.y,t.z,B.END_FRAME_EYE);this.g.inv.remove('eye_of_ender',1);const s=LANDMARKS.find(s=>s.id==='stronghold'),y=51,ring=portalRing(s.x,y,s.z);if(ring.every(c=>this.g.world.get(c.x,c.y,c.z)===B.END_FRAME_EYE)){const fill=[];for(let dx=-1;dx<=1;dx++)for(let dz=-1;dz<=1;dz++)fill.push({x:s.x+dx,y,z:s.z+dz,block:B.END_PORTAL});await delay(90);await this.batch(fill);this.achieve('eyes');this.a.toast('The End portal is open.');}});}else{const s=LANDMARKS.find(s=>s.id==='stronghold'),dx=s.x-this.g.player.x,dz=s.z-this.g.player.z;this.a.toast('The eye pulls '+(dz<0?'north':'south')+(Math.abs(dx)>5?(dx>0?'east':'west'):'')+', toward '+s.x+', '+s.z+'.');}return true;}
   if(base==='ender_pearl'){stop();if(t){const n=t.n,p={x:t.x+.5+n[0]*.85,y:t.y+1.05,z:t.z+.5+n[2]*.85,yaw:this.g.player.yaw,pitch:this.g.player.pitch};if(!this.g.world.collide(p)){this.g.inv.remove('ender_pearl',1);this.a.teleport(p);this.g.damage(5,'An ender pearl landed.');this.a.save();}}return true;}
   if(item.potion){stop();const effect=item.potion;if(effect==='healing')this.g.health=Math.min(20,this.g.health+8);else this.effects[effect]=Date.now()+180000;this.g.inv.consumeSlot(this.a.slot);this.g.inv.add('glass_bottle',1);this.a.renderHUD();this.a.save();this.a.toast(item.name);return true;}
-  if(base==='compass'||base==='clock'){stop();this.a.toast(base==='clock'?'World time: '+new Date((Date.now()+this.g.clockOffset)%1200000/1200000*86400000).toISOString().slice(11,16):'Spawn: '+Math.floor(this.g.spawn.x)+', '+Math.floor(this.g.spawn.z));return true;}
+  if(base==='compass'||base==='clock'){stop();this.a.toast(base==='clock'?this.g.clock.label():'Spawn: '+Math.floor(this.g.spawn.x)+', '+Math.floor(this.g.spawn.z));return true;}
   if(['bucket','water_bucket','lava_bucket','glass_bottle'].includes(base)){stop();this.perform(()=>this.useBucket(base,t));return true;}
   if(base==='fishing_rod'){stop();this.fish();return true;}
   if(['boat','minecart'].includes(base)){stop();this.perform(()=>this.spawnVehicle(base,t));return true;}
@@ -100,7 +99,7 @@ export class Expansion{
   if(edits.length)await this.batch(edits.slice(0,8));
  }
  async fallOne(){if(!this.gravityQueue.size)return;const key=this.gravityQueue.values().next().value;this.gravityQueue.delete(key);const[x,y,z]=parseKey(key),id=this.g.world.get(x,y,z);if(![4,28,B.RED_SAND,B.ANVIL].includes(id)||y<2)return;let to=y;while(to>1&&!shape(this.g.world.get(x,to-1,z)))to--;if(to<y){await this.batch([{x,y,z,block:0},{x,y:to,z,block:id,meta:this.meta(x,y,z)}]);this.a.beep(95,.04,.01);}}
- runCircuits(t){const get=this.g.world.get.bind(this.g.world),metadata=k=>this.g.world.metadata?.get(k)?.meta||{},p=this.a.mobs.players();this.circuitState=solveCircuit(this.circuitNodes,get,metadata,p,Date.now(),this.circuitState.powers,this.circuitMemory,(x,y,z)=>{if(this.g.dimension!=='overworld'||this.u.skyAt(x,z)>y)return 0;const fraction=((Date.now()-WORLD_EPOCH+this.g.clockOffset)%1200000+1200000)%1200000/1200000;return clamp(Math.sin(fraction*Math.PI*2)*1.8+.15,0,1)*15;});if(!this.a.mobs.authority||this.busy||this.g.net.writing||t<this.nextCircuit)return;
+ runCircuits(t){const get=this.g.world.get.bind(this.g.world),metadata=k=>this.g.world.metadata?.get(k)?.meta||{},p=this.a.mobs.players();this.circuitState=solveCircuit(this.circuitNodes,get,metadata,p,Date.now(),this.circuitState.powers,this.circuitMemory,(x,y,z)=>{if(this.g.dimension!=='overworld'||this.u.skyAt(x,z)>y)return 0;return this.g.clock.daylight()*15;});if(!this.a.mobs.authority||this.busy||this.g.net.writing||t<this.nextCircuit)return;
   for(const k of this.circuitNodes){const[x,y,z]=parseKey(k),id=get(x,y,z),m=metadata(k),on=(this.circuitState.outputs.get(k)||0)>0;let edits=[];
    if(id===B.RED_TORCH&&!this.circuitState.powers.has(k))edits=[{x,y,z,block:B.RED_TORCH_OFF,meta:m}];if(id===B.RED_TORCH_OFF&&this.circuitState.powers.has(k))edits=[{x,y,z,block:B.RED_TORCH,meta:m}];if(id===B.LAMP&&on)edits=[{x,y,z,block:B.LAMP_ON,meta:m}];if(id===B.LAMP_ON&&!on)edits=[{x,y,z,block:B.LAMP,meta:m}];
    if([B.PISTON,B.PISTON_EXTENDED,B.STICKY_PISTON,B.STICKY_EXTENDED].includes(id))edits=pistonEdits(x,y,z,id,m.dir,on,get,metadata,this.g.dimension==='overworld'?512:256);

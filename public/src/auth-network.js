@@ -80,7 +80,7 @@ export class AuthNetwork{
     this.liveAt.set(p.id,performance.now());
     this.livePose.set(p.id,{...p});
     const rec=this.roster.get(p.id);
-    if(rec){rec.seen_at=new Date().toISOString();rec.x=p.x;rec.y=p.y;rec.z=p.z;rec.yaw=p.yaw;rec.pitch=p.pitch;if(p.held!==undefined)rec.held=p.held;if(p.alive!==undefined)rec.alive=p.alive;}
+    if(rec){rec.seen_at=new Date(this.g.clock.serverMs()).toISOString();rec.x=p.x;rec.y=p.y;rec.z=p.z;rec.yaw=p.yaw;rec.pitch=p.pitch;if(p.held!==undefined)rec.held=p.held;if(p.alive!==undefined)rec.alive=p.alive;}
     try{n.hooks.move(p)}catch{}
     return;
   }
@@ -156,7 +156,7 @@ export class AuthNetwork{
   this.enableRealtime();
   n.channel=make();n.connected=false;
   n.valid=p=>finite(p)&&typeof p.id==='string'&&/^[0-9a-f-]{36}$/i.test(p.id)&&typeof p.name==='string'&&p.name.length<=18&&/^#[0-9a-f]{6}$/i.test(p.color)&&(!p.dimension||dims.has(p.dimension));
-  n.syncPresence=()=>{const members=new Map,now=performance.now();for(const[id,p]of this.roster){if(Date.now()-Date.parse(p.seen_at)>45000)continue;const live=this.liveAt.has(id)&&now-this.liveAt.get(id)<2000;members.set(id,{...p,t:Date.parse(p.seen_at),transport:live?9:8,version:8})}for(const[id,p]of this.livePose){if(id===n.session?.id)continue;if(now-(this.liveAt.get(id)||0)>4000){this.livePose.delete(id);this.liveAt.delete(id);continue;}if(!members.has(id))members.set(id,{...p,transport:9,version:8})}if(n.session&&n.position){const p=n.packet();p.dimension=this.g.dimension||'overworld';members.set(n.session.id,p)}n.members=members;n.hooks.presence(members,n.session?.id)};
+  n.syncPresence=()=>{const members=new Map,now=performance.now();for(const[id,p]of this.roster){if(this.g.clock.serverMs()-Date.parse(p.seen_at)>45000)continue;const live=this.liveAt.has(id)&&now-this.liveAt.get(id)<2000;members.set(id,{...p,t:Date.parse(p.seen_at),transport:live?9:8,version:8})}for(const[id,p]of this.livePose){if(id===n.session?.id)continue;if(now-(this.liveAt.get(id)||0)>4000){this.livePose.delete(id);this.liveAt.delete(id);continue;}if(!members.has(id))members.set(id,{...p,transport:9,version:8})}if(n.session&&n.position){const p=n.packet();p.dimension=this.g.dimension||'overworld';members.set(n.session.id,p)}n.members=members;n.hooks.presence(members,n.session?.id)};
   n.join=async(name,color,position)=>{
     this.stopped=false;clearInterval(this.timer);await this.closeLive();
     const token=(()=>{try{return sessionStorage.getItem('carbon-session-v8')}catch{return null}})();
@@ -191,7 +191,7 @@ export class AuthNetwork{
     n.session=null;n.members.clear();this.roster.clear();this.remoteSeq.clear();this.livePose.clear();this.liveAt.clear();this.lifecycleReady=false;n.hooks.status(false,'Offline');
   };
  }
- mobSnapshot(){const m=this.u.a.mobs;if(!m?.authority||performance.now()-this.lastMobPublish<100)return null;this.lastMobPublish=performance.now();const out=[];for(const v of m.mobs.values()){if(out.length>=64)break;if(!v||!finite({...v,pitch:v.pitch||0})||!Number.isFinite(v.hp))continue;const o={id:String(v.id).slice(0,96),kind:v.kind,x:+v.x.toFixed(3),y:+v.y.toFixed(3),z:+v.z.toFixed(3),yaw:+(v.yaw||0).toFixed(3),pitch:+(v.pitch||0).toFixed(3),hp:+v.hp};for(const k of ['phase','fuse','panic','regrow','vy'])if(Number.isFinite(v[k]))o[k]=+v[k];for(const k of ['burning','sheared','profession','crystalIndex'])if(v[k]!==undefined)o[k]=v[k];out.push(o)}return out}
+ mobSnapshot(){const m=this.u.a.mobs;if(!m?.authority||performance.now()-this.lastMobPublish<100)return null;this.lastMobPublish=performance.now();const out=[];for(const v of m.mobs.values()){if(out.length>=64)break;if(!v||!finite({...v,pitch:v.pitch||0})||!Number.isFinite(v.hp))continue;const o={id:String(v.id).slice(0,96),kind:v.kind,x:+v.x.toFixed(3),y:+v.y.toFixed(3),z:+v.z.toFixed(3),yaw:+(v.yaw||0).toFixed(3),pitch:+(v.pitch||0).toFixed(3),hp:+v.hp};for(const k of ['phase','fuse','panic','regrow','vy','babyUntil','breedCooldown','loveUntil','aggro'])if(Number.isFinite(v[k]))o[k]=+v[k];for(const k of ['burning','sheared','profession','crystalIndex'])if(v[k]!==undefined)o[k]=v[k];out.push(o)}return out}
  async poll(force=false){
   const n=this.n;if(!n.session||this.stopped)return;
   const now=performance.now(),min=document.hidden?800:this.poseLive?200:80;
@@ -199,18 +199,20 @@ export class AuthNetwork{
   if(this.pollTask)return this.pollTask;
   const mob=this.getHost()===n.session.id?this.mobSnapshot():null;
   const run=(async()=>{
+    const clockSentAt=performance.now();
     const{data,error}=await this.rawRpc('carbon_http_poll_v8',{p_id:n.session.id,p_token:n.session.token,p_pose:this.pose(),p_block_after:n.cursor||0,p_chat_after:this.chatCursor,p_combat_after:this.combatCursor,p_mob_state:mob,p_presence_after:this.presenceCursor||0});
     if(error)throw Error(error.message);
+    this.g.clock.sync(data.clock,clockSentAt,performance.now());
     this.lastPoll=performance.now();this.lastPose=this.pose();this.failures=0;n.connected=true;
     this.roster=new Map((data.players||[]).map(p=>[p.id,p]));
-    for(const[id,p]of this.livePose){const rec=this.roster.get(id);if(rec&&this.liveAt.has(id)&&performance.now()-this.liveAt.get(id)<500){rec.x=p.x;rec.y=p.y;rec.z=p.z;rec.yaw=p.yaw;rec.pitch=p.pitch;if(p.held!==undefined)rec.held=p.held;if(p.alive!==undefined)rec.alive=p.alive;rec.seen_at=new Date().toISOString();}}
+    for(const[id,p]of this.livePose){const rec=this.roster.get(id);if(rec&&this.liveAt.has(id)&&performance.now()-this.liveAt.get(id)<500){rec.x=p.x;rec.y=p.y;rec.z=p.z;rec.yaw=p.yaw;rec.pitch=p.pitch;if(p.held!==undefined)rec.held=p.held;if(p.alive!==undefined)rec.alive=p.alive;rec.seen_at=new Date(this.g.clock.serverMs()).toISOString();}}
     this.hosts=new Map((data.hosts||[]).map(h=>[h.dimension,h]));
     for(const row of data.blocks||[]){n.world.apply(row);n.cursor=Math.max(n.cursor,Number(row.revision)||0)}
     for(const row of data.chat||[]){n.message(row);this.chatCursor=Math.max(this.chatCursor,Number(row.id)||0)}
     for(const row of data.combat||[]){this.g.frontier?.combat(row);this.combatCursor=Math.max(this.combatCursor,Number(row.id)||0)}
     for(const[id,p]of this.roster){
       if(id===n.session.id)continue;
-      const stamp=Date.parse(p.seen_at)||Date.now();
+      const stamp=Date.parse(p.seen_at)||this.g.clock.serverMs();
       this.ingestPose({...p,t:stamp},false);
     }
     for(const id of [...this.remoteSeq.keys()])if(!this.roster.has(id))this.remoteSeq.delete(id);
@@ -225,7 +227,7 @@ export class AuthNetwork{
     }
     const host=this.getHost();
     if(host&&host!==n.session.id&&Array.isArray(data.mobs)&&data.mobs.length){
-      this.u.a.mobs?.receive({kind:'mob-state',version:3,from:host,dimension:this.g.dimension||'overworld',stamp:Date.parse(data.mob_updated_at)||Date.now(),generation:Number(data.mob_generation)||0,mobs:data.mobs});
+      this.u.a.mobs?.receive({kind:'mob-state',version:3,from:host,dimension:this.g.dimension||'overworld',stamp:Date.parse(data.mob_updated_at)||this.g.clock.serverMs(),generation:Number(data.mob_generation)||0,mobs:data.mobs});
     }
     n.hooks.status(true,this.connectedLabel());
     return data;
@@ -238,6 +240,6 @@ export class AuthNetwork{
  async beat(fresh=false){return this.poll(fresh&&performance.now()-this.lastPoll>90)}
  async forceBeat(){return this.poll(true)}
  async ensureActionState(maxAge=280){if(!this.n.session)throw Error('Rejoin before acting.');const p=this.g.player,l=this.lastPose,moved=!l||l.dimension!==(this.g.dimension||'overworld')||Math.hypot(p.x-l.x,p.y-l.y,p.z-l.z)>.35;if(moved||performance.now()-this.lastPoll>maxAge)await this.poll(true)}
- getHost(dim=this.g.dimension||'overworld'){const h=this.hosts.get(dim);return h&&Date.parse(h.expires_at)>Date.now()-2000?h.owner:null}
+ getHost(dim=this.g.dimension||'overworld'){const h=this.hosts.get(dim);return h&&Date.parse(h.expires_at)>this.g.clock.serverMs()-2000?h.owner:null}
  status(){return{transport:this.poseLive?'live':'http',websocket:!!this.poseLive,players:this.n.members.size,host:this.getHost(),failures:this.failures,direct:this.poseLive?1:0,relay:!!this.poseLive}}
 }

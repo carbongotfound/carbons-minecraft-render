@@ -1,1 +1,1 @@
-export const WORLD_EPOCH=1788957150456;export const BUILD_VERSION='survival-0.9.1';
+export const BUILD_VERSION='survival-0.9.2';
