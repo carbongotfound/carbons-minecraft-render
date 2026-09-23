@@ -67,8 +67,20 @@ try{
  console.log('Testing local restore');
  // An old local save remains discoverable even if its old login token was lost.
  await second.page.evaluate(()=>{localStorage.setItem('carbon-survival-v1',JSON.stringify({inventory:[{id:'emerald',count:11}],xp:55}));__survival.game.upgrade.a.panel='pause';document.getElementById('pause').hidden=false;});
- await second.page.locator('#pauseRecovery').click();
- await second.page.locator('.recovery-row').filter({hasText:'Old device save'}).filter({hasText:'Before account saves'}).getByRole('button').click();
+ await second.page.locator('#leaveBtn').click();
+ await second.page.waitForFunction(()=>!!window.__survival&&!__survival.game.playing&&!__survival.game.joining,null,{timeout:120000});
+ await second.page.locator('#titleRecovery').click();
+ const legacyRestore=second.page.locator('.recovery-row').filter({hasText:'Old device save'}).filter({hasText:'Before account saves'}).getByRole('button');
+ assert.equal(await legacyRestore.isEnabled(),true);
+ await legacyRestore.click();assert.ok(await second.page.getByRole('heading',{name:'Where should this backup be restored?'}).isVisible());
+ await second.page.locator('#recoveryConfirm').getByRole('button',{name:'Cancel',exact:true}).click();
+ assert.equal(saves.get(b).state.inventory.find(s=>s?.id==='gold').count,9);
+ await legacyRestore.click();await second.page.locator('#recoveryConfirm').getByRole('button',{name:'Continue with Account B',exact:true}).click();
+ await second.page.waitForFunction(()=>window.__survival?.game.playing&&!__survival.game.joining&&!document.getElementById('saveRecovery').hidden&&!document.getElementById('recoveryConfirm').hidden,null,{timeout:120000});
+ assert.match(await second.page.locator('#recoveryConfirm').innerText(),/Restore this backup into Account B/);
+ assert.equal(await second.page.evaluate(()=>__survival.game.inv.count('gold')),9);
+ assert.equal(await second.page.evaluate(()=>document.pointerLockElement),null);
+ await second.page.screenshot({path:'artifacts/restore-from-title-confirm.png'});
  await second.page.locator('#confirmRestore').click();
  await second.page.waitForFunction(()=>window.__survival?.game.playing&&__survival.game.inv.count('emerald')===11,null,{timeout:120000});
  assert.equal(saves.get(b).state.xp,55);assert.ok(histories.get(b).some(h=>h.state.inventory.some(s=>s?.id==='gold'&&s.count===9)));
@@ -98,13 +110,16 @@ try{
 
  // A lost credential can be rescued into a separate account without overwriting
  // the account from the mistaken code. The original credentials stay available.
- await second.page.locator('#recoveryNewName').fill('Rescued survivor');await second.page.locator('#recoveryNewAccount').click();
+ await second.page.locator('.recovery-row').filter({hasText:'Old device save'}).filter({hasText:'Before account saves'}).getByRole('button').click();
+ await second.page.locator('#restoreAccountName').fill('Rescued survivor');await second.page.locator('#restoreNewAccount').click();
  await second.page.waitForFunction(()=>window.__survival?.game.playing&&!__survival.game.joining&&__survival.game.net.session?.name==='Rescued survivor',null,{timeout:120000});
  const c=await second.page.evaluate(()=>__survival.game.net.session.id);assert.notEqual(c,a);assert.notEqual(c,b);
- await second.page.evaluate(()=>{__survival.game.upgrade.a.panel='pause';document.getElementById('pause').hidden=false;});
- await second.page.locator('#pauseRecovery').click();await second.page.locator('.recovery-row').filter({hasText:'Old device save'}).filter({hasText:'Before account saves'}).getByRole('button').click();await second.page.locator('#confirmRestore').click();
+ await second.page.waitForFunction(()=>!document.getElementById('recoveryConfirm').hidden);
+ assert.match(await second.page.locator('#recoveryConfirm').innerText(),/Restore this backup into Rescued survivor/);
+ assert.equal(await second.page.evaluate(()=>__survival.game.inv.count('emerald')),0);
+ await second.page.locator('#confirmRestore').click();
  await second.page.waitForFunction(()=>window.__survival?.game.playing&&!__survival.game.joining&&__survival.game.inv.count('emerald')===11,null,{timeout:120000});
  assert.equal(saves.get(a).state.inventory.find(s=>s?.id==='diamond').count,7);assert.equal(saves.get(b).state.inventory.find(s=>s?.id==='gold').count,9);assert.equal(saves.get(c).state.xp,55);
  await second.page.screenshot({path:'artifacts/account-transfer.png'});assert.deepEqual(errors,[]);
- console.log('PASS: actual login-code buttons restore account A on a device previously used by B, including inventory, XP, name and settings; B stays unchanged; undo account switch, local rescue, undo progress restore and browser restart all retrieve the right data; code reuse rejected. Database HTTP isolated.');
+ console.log('PASS: actual login-code buttons restore account A on a device previously used by B, including inventory, XP, name and settings; B stays unchanged; undo account switch, local rescue, undo progress restore and browser restart all retrieve the right data; code reuse rejected; title-screen restore is clickable and retains the selected backup across existing/new account sign-in; no restore occurs before confirmation. Database HTTP isolated.');
 }catch(error){if(latestPage&&!latestPage.isClosed()){console.log(await latestPage.evaluate(()=>({toast:document.getElementById('toast')?.textContent,join:document.getElementById('joinError')?.textContent,code:document.getElementById('loginCodeShow')?.textContent,playing:window.__survival?.game.playing,saveError:window.__survival?.game.accountSaveError})));await latestPage.screenshot({path:'artifacts/account-recovery-failure.png'});}throw error;}finally{await browser?.close();server.kill();}

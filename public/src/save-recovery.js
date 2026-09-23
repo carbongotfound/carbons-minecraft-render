@@ -1,4 +1,5 @@
 const ACCOUNTS='carbon-accounts-v1', BACKUPS='carbon-recovery-v1', ACTIVE='carbon-active-account';
+const PENDING_RESTORE='carbon-pending-restore';
 export const readLocal=key=>{try{return JSON.parse(localStorage.getItem(key)||'null');}catch{return null;}};
 const put=(key,value)=>localStorage.setItem(key,JSON.stringify(value));
 export const savedAccounts=()=>readLocal(ACCOUNTS)||[];
@@ -55,6 +56,7 @@ class SaveRecovery {
   sessionStorage.removeItem('carbon-pending-switch');sessionStorage.removeItem('carbon-expected-account');
  }
  failed(){
+  sessionStorage.removeItem(PENDING_RESTORE);
   const pending=JSON.parse(sessionStorage.getItem('carbon-pending-switch')||'null');if(!pending)return;
   const p=pending.previous;
   if(p){sessionStorage.setItem('carbon-session-v8',p.token);if(p.id)sessionStorage.setItem('carbon-account-id',p.id);else sessionStorage.removeItem('carbon-account-id');document.getElementById('name').value=p.name;localStorage.setItem('carbon-survival-name',p.name);}
@@ -107,6 +109,34 @@ class SaveRecovery {
  }
  close(){if(this.busy)return;document.getElementById('saveRecovery').hidden=true;if(this.g.playing){this.g.upgrade.a.panel='pause';document.getElementById('pause').hidden=false;}}
  async run(action){if(this.busy)return;this.busy=true;const s=document.getElementById('recoveryStatus');s.textContent='Saving and loading account data…';try{await action();}catch(e){s.textContent=e.message;}finally{this.busy=false;}}
+ beginRestore(entry){
+  if(this.busy)return;
+  if(this.g.joining){document.getElementById('recoveryStatus').textContent='Finishing sign-in. Please try Restore again in a moment.';return;}
+  if(this.g.playing&&this.g.accountSaves.ready){this.confirm(entry);return;}
+  const node=document.getElementById('recoveryConfirm');node.hidden=false;node.replaceChildren();
+  document.getElementById('recoveryStatus').textContent='Choose an account for this backup. You will confirm the restore after signing in.';
+  const heading=document.createElement('h3');heading.textContent='Where should this backup be restored?';node.append(heading);
+  const continueWith=account=>this.run(async()=>{
+   sessionStorage.setItem(PENDING_RESTORE,JSON.stringify({entry,accountId:account.id||null}));
+   try{await this.activate(account);}catch(error){sessionStorage.removeItem(PENDING_RESTORE);throw error;}
+  });
+  const current=this.current(),accounts=savedAccounts();if(current&&!accounts.some(a=>a.token===current.token))accounts.unshift(current);
+  for(const account of accounts){const b=document.createElement('button');b.className='wide';b.textContent='Continue with '+account.name;b.onclick=()=>continueWith(account);node.append(b);}
+  const label=document.createElement('label');label.textContent='Or create a separate account';
+  const name=document.createElement('input');name.id='restoreAccountName';name.maxLength=18;name.placeholder='Player name';name.setAttribute('aria-label','Name for recovered account');label.append(name);node.append(label);
+  const create=document.createElement('button');create.id='restoreNewAccount';create.textContent='Create account and continue';create.onclick=()=>{const value=name.value.trim();if(value.length<2){document.getElementById('recoveryStatus').textContent='Enter a name with 2 to 18 characters.';name.focus();return;}continueWith({name:value,fresh:true});};node.append(create);
+  const cancel=document.createElement('button');cancel.textContent='Cancel';cancel.onclick=()=>{node.hidden=true;sessionStorage.removeItem(PENDING_RESTORE);};node.append(cancel);
+  node.scrollIntoView({block:'nearest'});
+ }
+ resumeRestore(){
+  const raw=sessionStorage.getItem(PENDING_RESTORE);if(!raw)return;
+  sessionStorage.removeItem(PENDING_RESTORE);
+  let pending;try{pending=JSON.parse(raw);}catch{return;}
+  if(!pending?.entry||!this.g.playing||!this.g.accountSaves.ready)return;
+  this.open().catch(error=>{document.getElementById('recoveryStatus').textContent=error.message;});
+  if(pending.accountId&&pending.accountId!==this.g.net.session.id){document.getElementById('recoveryStatus').textContent='The signed-in account changed. Select the backup again to choose its destination.';return;}
+  this.confirm(pending.entry);
+ }
  confirm(entry){
   const node=document.getElementById('recoveryConfirm');node.hidden=false;node.replaceChildren();
   const p=document.createElement('p');p.textContent=`Restore this backup into ${this.g.net.session.name}? Their current progress will be backed up first.`;node.append(p);
@@ -115,14 +145,14 @@ class SaveRecovery {
  }
  async open(){
   const $=id=>document.getElementById(id),g=this.g;if(g.playing){g.upgrade.a.panel='recovery';g.upgrade.a.release();$('pause').hidden=true;}
-  $('saveRecovery').hidden=false;$('recoveryConfirm').hidden=true;$('recoveryStatus').textContent=g.playing?'Current account: '+g.net.session.name:'Choose a saved account, or join first to restore a progress backup.';
+  $('saveRecovery').hidden=false;$('recoveryConfirm').hidden=true;$('recoveryStatus').textContent=g.playing?'Current account: '+g.net.session.name:'Select a backup to restore. You can choose or create its account in the next step.';
   const accounts=$('recoveryAccounts');accounts.replaceChildren();
   const previous=readLocal('carbon-previous-account'),current=this.current();
   const button=(label,account,id)=>{const b=document.createElement('button');b.className='wide';if(id)b.id=id;b.textContent=label;b.onclick=()=>this.run(()=>this.activate(account));accounts.append(b);};
   if(previous&&previous.token!==current?.token)button('Undo account switch — return to '+previous.name,previous,'undoAccountSwitch');
   for(const a of savedAccounts())if(a.token!==current?.token)button('Open '+a.name,a);
   const rows=$('recoveryBackups');rows.replaceChildren();
-  const row=entry=>{const card=document.createElement('div');card.className='recovery-row';const state=entry.state||entry,items=(state.inventory||[]).filter(Boolean),p=document.createElement('p');p.textContent=`${entry.name||g.net.session?.name||'Account backup'} · ${entry.reason} · ${entry.time?new Date(entry.time).toLocaleString():'date unknown'}\n${items.length} stacks · ${Number(state.xp)||0} XP · ${items.slice(0,4).map(i=>i.count+' '+i.id).join(', ')}`;card.append(p);const b=document.createElement('button');b.textContent='Restore this backup';b.disabled=!g.playing;b.onclick=()=>this.confirm(entry);card.append(b);rows.append(card);};
+  const row=entry=>{const card=document.createElement('div');card.className='recovery-row';const state=entry.state||entry,items=(state.inventory||[]).filter(Boolean),p=document.createElement('p');p.textContent=`${entry.name||g.net.session?.name||'Account backup'} · ${entry.reason} · ${entry.time?new Date(entry.time).toLocaleString():'date unknown'}\n${items.length} stacks · ${Number(state.xp)||0} XP · ${items.slice(0,4).map(i=>i.count+' '+i.id).join(', ')}`;card.append(p);const b=document.createElement('button');b.textContent='Restore this backup';b.onclick=()=>this.beginRestore(entry);card.append(b);rows.append(card);};
   localBackups().forEach(row);
   if(g.playing)try{const data=await g.accountSaves.rpc('history');if(data.owner!==g.net.session.id)throw Error('Backup account mismatch.');for(const b of data.history||[])row({...b,reason:'Cloud: '+b.reason});}catch(e){$('recoveryStatus').textContent='Local backups are available. Cloud backups: '+e.message;}
   if(!rows.children.length){const p=document.createElement('p');p.textContent='No backups found in this browser. Open recovery on the original device, or use a login code from a device still signed in to that account.';rows.append(p);}
