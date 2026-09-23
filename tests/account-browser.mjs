@@ -4,7 +4,7 @@ import {mkdir,writeFile} from 'node:fs/promises';
 import {chromium} from 'playwright';
 const port=10004,base=`http://127.0.0.1:${port}`;await mkdir('artifacts',{recursive:true});
 const server=spawn(process.execPath,['server.mjs'],{env:{...process.env,PORT:String(port)},stdio:'pipe',windowsHide:true});
-let browser,failLoad=false;
+let browser,latestPage,failLoad=false;
 const accounts=new Map,saves=new Map,options=new Map,histories=new Map,errors=[];
 try{
  for(let i=0;i<100;i++){try{if((await fetch(base+'/healthz')).ok)break;}catch{}await new Promise(r=>setTimeout(r,100));}
@@ -33,7 +33,7 @@ try{
    else if(name==='carbon_progress_v4')data=p.p_op==='boss_read'?{health:200,defeated:false,crystals:[]}:{ok:true};
    return route.fulfill({status:200,contentType:'application/json',body:JSON.stringify(data)});
   });
-  const page=await c.newPage();page.on('pageerror',e=>{errors.push(e.message);console.error(e.stack);});
+  const page=await c.newPage();latestPage=page;page.on('pageerror',e=>{errors.push(e.message);console.error(e.stack);});
   await page.addInitScript(()=>{window.addEventListener('load',()=>{const timer=setInterval(()=>{if(window.__survival){__survival.game.frontier.auth.openLive=async()=>false;__survival.game.upgrade.requestLock=()=>{};clearInterval(timer);}},10);});});
   await page.goto(base+'/?test');await page.waitForFunction(()=>!!window.__survival,null,{timeout:120000});
   await page.evaluate(()=>{const g=__survival.game;g.frontier.auth.openLive=async()=>false;g.upgrade.requestLock=()=>{};});
@@ -68,7 +68,7 @@ try{
  // An old local save remains discoverable even if its old login token was lost.
  await second.page.evaluate(()=>{localStorage.setItem('carbon-survival-v1',JSON.stringify({inventory:[{id:'emerald',count:11}],xp:55}));__survival.game.upgrade.a.panel='pause';document.getElementById('pause').hidden=false;});
  await second.page.locator('#pauseRecovery').click();
- await second.page.locator('.recovery-row').filter({hasText:'Old device save'}).getByRole('button').click();
+ await second.page.locator('.recovery-row').filter({hasText:'Old device save'}).filter({hasText:'Before account saves'}).getByRole('button').click();
  await second.page.locator('#confirmRestore').click();
  await second.page.waitForFunction(()=>window.__survival?.game.playing&&__survival.game.inv.count('emerald')===11,null,{timeout:120000});
  assert.equal(saves.get(b).state.xp,55);assert.ok(histories.get(b).some(h=>h.state.inventory.some(s=>s?.id==='gold'&&s.count===9)));
@@ -95,6 +95,16 @@ try{
  await second.page.waitForFunction(()=>!__survival.game.joining&&document.getElementById('joinError').textContent.includes('Temporary save failure'),null,{timeout:120000});
  const failure=await second.page.evaluate(()=>({token:sessionStorage.getItem('carbon-session-v8'),accounts:JSON.parse(localStorage.getItem('carbon-accounts-v1')).length}));assert.equal(failure.token,accounts.get(b).token);assert.equal(failure.accounts,2);
  await second.page.locator('#titleRecovery').click();assert.ok(await second.page.getByRole('button',{name:'Open Account A',exact:true}).isVisible());
+
+ // A lost credential can be rescued into a separate account without overwriting
+ // the account from the mistaken code. The original credentials stay available.
+ await second.page.locator('#recoveryNewName').fill('Rescued survivor');await second.page.locator('#recoveryNewAccount').click();
+ await second.page.waitForFunction(()=>window.__survival?.game.playing&&!__survival.game.joining&&__survival.game.net.session?.name==='Rescued survivor',null,{timeout:120000});
+ const c=await second.page.evaluate(()=>__survival.game.net.session.id);assert.notEqual(c,a);assert.notEqual(c,b);
+ await second.page.evaluate(()=>{__survival.game.upgrade.a.panel='pause';document.getElementById('pause').hidden=false;});
+ await second.page.locator('#pauseRecovery').click();await second.page.locator('.recovery-row').filter({hasText:'Old device save'}).filter({hasText:'Before account saves'}).getByRole('button').click();await second.page.locator('#confirmRestore').click();
+ await second.page.waitForFunction(()=>window.__survival?.game.playing&&!__survival.game.joining&&__survival.game.inv.count('emerald')===11,null,{timeout:120000});
+ assert.equal(saves.get(a).state.inventory.find(s=>s?.id==='diamond').count,7);assert.equal(saves.get(b).state.inventory.find(s=>s?.id==='gold').count,9);assert.equal(saves.get(c).state.xp,55);
  await second.page.screenshot({path:'artifacts/account-transfer.png'});assert.deepEqual(errors,[]);
  console.log('PASS: actual login-code buttons restore account A on a device previously used by B, including inventory, XP, name and settings; B stays unchanged; undo account switch, local rescue, undo progress restore and browser restart all retrieve the right data; code reuse rejected. Database HTTP isolated.');
-}finally{await browser?.close();server.kill();}
+}catch(error){if(latestPage&&!latestPage.isClosed()){console.log(await latestPage.evaluate(()=>({toast:document.getElementById('toast')?.textContent,join:document.getElementById('joinError')?.textContent,code:document.getElementById('loginCodeShow')?.textContent,playing:window.__survival?.game.playing,saveError:window.__survival?.game.accountSaveError})));await latestPage.screenshot({path:'artifacts/account-recovery-failure.png'});}throw error;}finally{await browser?.close();server.kill();}

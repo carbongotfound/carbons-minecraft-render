@@ -26,6 +26,8 @@ export function localBackups(){
 }
 export function restoreDeviceLogin(){
  if(sessionStorage.getItem('carbon-session-v8'))return;
+ // A deliberate new account must not silently reopen the previous one.
+ if(JSON.parse(sessionStorage.getItem('carbon-pending-switch')||'null')?.target?.fresh)return;
  const active=localStorage.getItem(ACTIVE),account=savedAccounts().find(a=>a.id===active);
  if(account){sessionStorage.setItem('carbon-session-v8',account.token);sessionStorage.setItem('carbon-account-id',account.id);sessionStorage.setItem('carbon-expected-account',account.id);}
 }
@@ -41,7 +43,7 @@ class SaveRecovery {
   for(const b of localBackups())if(b.id==='legacy'||b.id.startsWith('carbon-save-account:'))backupSave(b.state,{...b,reason:'Before account switch'});
   rememberAccount(target); // Keep a redeemed code usable if the following join fails.
   sessionStorage.setItem('carbon-pending-switch',JSON.stringify({previous,target}));
-  sessionStorage.setItem('carbon-session-v8',target.token);
+  if(target.token)sessionStorage.setItem('carbon-session-v8',target.token);else sessionStorage.removeItem('carbon-session-v8');
   if(target.id)sessionStorage.setItem('carbon-expected-account',target.id);else sessionStorage.removeItem('carbon-expected-account');
   sessionStorage.removeItem('carbon-account-id');this.g.net.expectedAccountId=target.id||null;
   localStorage.setItem('carbon-survival-name',target.name||'Survivor');document.getElementById('name').value=target.name||'Survivor';
@@ -93,6 +95,11 @@ class SaveRecovery {
   const $=id=>document.getElementById(id),panel=document.createElement('section');panel.id='saveRecovery';panel.className='cover';panel.hidden=true;
   panel.innerHTML='<div class="graphics-window"><header><h2>Accounts & recovery</h2><button id="recoveryClose" aria-label="Close recovery">×</button></header><p id="recoveryStatus" role="status"></p><div id="recoveryConfirm" hidden></div><div id="recoveryAccounts"></div><h3>Progress backups</h3><p>Restore inventory, equipment, XP and exploration progress. Shared builds and chest contents stay in the world. Your current progress is backed up before restoring.</p><button id="downloadBackups">Download device backups</button><div id="recoveryBackups"></div></div>';
   document.body.append(panel);
+  const fresh=document.createElement('div');fresh.className='recovery-row';
+  const explanation=document.createElement('p');explanation.textContent='Lost the old login? Create a separate account, then restore the old device backup into it. Existing accounts stay saved here.';
+  const name=document.createElement('input');name.id='recoveryNewName';name.maxLength=18;name.placeholder='New account name';name.setAttribute('aria-label','New account name');
+  const create=document.createElement('button');create.id='recoveryNewAccount';create.textContent='Create separate account';create.onclick=()=>{const value=name.value.trim();if(value.length<2){$('recoveryStatus').textContent='Enter a name with 2 to 18 characters.';name.focus();return;}this.run(()=>this.activate({name:value,fresh:true}));};
+  fresh.append(explanation,name,create);$('recoveryAccounts').after(fresh);
   for(const [id,before]of [['titleRecovery','titleGraphics'],['pauseRecovery','leaveBtn']]){const b=document.createElement('button');b.id=id;b.className='wide';b.textContent='Accounts & recovery';b.onclick=()=>this.open();$(before).before(b);}
   $('recoveryClose').onclick=()=>this.close();
   $('downloadBackups').onclick=()=>{const blob=new Blob([JSON.stringify({format:'carbon-progress-backups-v1',backups:localBackups()},null,2)],{type:'application/json'}),url=URL.createObjectURL(blob),a=document.createElement('a');a.href=url;a.download='carbon-progress-backups.json';a.click();setTimeout(()=>URL.revokeObjectURL(url),1000);};
