@@ -76,6 +76,7 @@ const handleKeepaliveSocket = (socket) => {
 
   socket.on('data', (chunk) => {
     if (closed) return;
+    if(buf.length+chunk.length>2048){close(1009);return;}
     buf = Buffer.concat([buf, chunk]);
     while (buf.length >= 2) {
       const opcode = buf[0] & 0x0f;
@@ -90,10 +91,11 @@ const handleKeepaliveSocket = (socket) => {
       } else if (len === 127) {
         if (buf.length < 10) return;
         const n = buf.readBigUInt64BE(2);
-        if (n > 1_000_000n) { close(1009); return; }
+        if (n > 1024n) { close(1009); return; }
         len = Number(n);
         offset = 10;
       }
+      if(len>1024){close(1009);return;}
       if (!masked) { close(1002); return; }
       if (buf.length < offset + 4 + len) return;
       const mask = buf.subarray(offset, offset + 4);
@@ -144,6 +146,7 @@ const readJson = (req) => new Promise((resolve, reject) => {
 const rateOk = (ip, kind, max) => {
   const now = Date.now();
   const key = kind + ':' + ip;
+  if(!linkHits.has(key)&&linkHits.size>=4096)return false;
   const hits = (linkHits.get(key) || []).filter((t) => now - t < LINK_TTL_MS);
   if (hits.length >= max) { linkHits.set(key, hits); return false; }
   hits.push(now);
@@ -153,6 +156,7 @@ const rateOk = (ip, kind, max) => {
 
 const pruneCodes = () => {
   const now = Date.now();
+  for(const [key,hits] of linkHits)if(!hits.length||hits.at(-1)<now-LINK_TTL_MS)linkHits.delete(key);
   for (const [code, row] of linkCodes) if (row.used || row.exp < now) linkCodes.delete(code);
 };
 
@@ -181,6 +185,7 @@ const handleLink = async (req, res, pathname) => {
     if (!/^[0-9a-f-]{36}$/i.test(id) || token.length < 8 || token.length > 200) {
       return json(res, 400, {error: 'Join the world first.'});
     }
+    if(linkCodes.size>=1024)return json(res,503,{error:'Login codes are busy. Try again shortly.'});
     const code = makeCode();
     linkCodes.set(code, {id, token, exp: Date.now() + LINK_TTL_MS, used: false});
     return json(res, 200, {code, expires_in: 720});
@@ -197,7 +202,9 @@ const handleLink = async (req, res, pathname) => {
   return json(res, 404, {error: 'Not found'});
 };
 
-const server = http.createServer(async (req, res) => {
+const assetCache=new Map();
+async function statAsset(file){if(process.env.NODE_ENV==='production'&&assetCache.has(file))return assetCache.get(file);const st=await fsp.stat(file).catch(()=>null);if(st?.isFile()&&assetCache.size<256&&process.env.NODE_ENV==='production')assetCache.set(file,st);return st;}
+const server = http.createServer({maxHeaderSize:8192,requestTimeout:15000,headersTimeout:15000,keepAliveTimeout:5000},async (req, res) => {
   try {
     const u = new URL(req.url, 'http://local');
     if (u.pathname === '/healthz') {
@@ -210,25 +217,33 @@ const server = http.createServer(async (req, res) => {
     let rel = decodeURIComponent(u.pathname).replace(/^\/+/, '') || 'index.html';
     if (rel.includes('..')) return send(res, 400, 'Bad path');
     let file = path.join(root, rel);
-    let st = await fsp.stat(file).catch(() => null);
+    let st = await statAsset(file);
     if (!st?.isFile()) {
       file = path.join(root, 'index.html');
-      st = await fsp.stat(file);
+      st = await statAsset(file);
     }
     const ext = path.extname(file).toLowerCase();
+    const accepts=String(req.headers['accept-encoding']||'');let encoding;
+    if(process.env.NODE_ENV==='production'&&['.html','.js','.css'].includes(ext)){for(const [enc,suffix] of [['br','.br'],['gzip','.gz']])if(accepts.split(',').some(v=>v.trim().split(';')[0]===enc&&!/;\s*q=0(?:\.0*)?$/.test(v.trim()))){const compressed=await statAsset(file+suffix);if(compressed){file+=suffix;st=compressed;encoding=enc;break;}}}
+    const etag='W/"'+st.size+'-'+Math.floor(st.mtimeMs)+'-'+(encoding||'raw')+'"';
+    if(req.headers['if-none-match']===etag){res.writeHead(304,{etag,vary:'Accept-Encoding'});res.end();return;}
     res.writeHead(200, {
+      etag,vary:'Accept-Encoding',...(encoding?{'content-encoding':encoding}:{}),
       'content-type': types[ext] || 'application/octet-stream',
       'x-content-type-options': 'nosniff',
       'referrer-policy': 'same-origin',
       'cache-control': ['.html', '.js', '.css'].includes(ext) ? 'no-cache' : 'public, max-age=3600',
       'content-length': st.size,
     });
-    fs.createReadStream(file).pipe(res);
+    if(req.method==='HEAD'){res.end();return;}
+    const stream=fs.createReadStream(file);stream.on('error',()=>res.destroy());res.on('close',()=>stream.destroy());stream.pipe(res);
   } catch {
     send(res, 500, 'Server error');
   }
 });
 
+server.maxConnections=128;
+const keepaliveSockets=new Set();
 server.on('upgrade', (req, socket, head) => {
   try {
     const pathname = new URL(req.url || '/', 'http://local').pathname;
@@ -236,7 +251,7 @@ server.on('upgrade', (req, socket, head) => {
     const key = Array.isArray(keyRaw) ? keyRaw[0] : keyRaw;
     const upgrade = String(req.headers.upgrade || '').toLowerCase();
     const version = String(req.headers['sec-websocket-version'] || '');
-    if (pathname !== WS_PATH || req.method !== 'GET' || upgrade !== 'websocket' || !key || version !== '13') {
+    if (keepaliveSockets.size>=32 || pathname !== WS_PATH || req.method !== 'GET' || upgrade !== 'websocket' || !key || version !== '13') {
       socket.write('HTTP/1.1 400 Bad Request\r\nConnection: close\r\n\r\n');
       socket.destroy();
       return;
@@ -249,6 +264,7 @@ server.on('upgrade', (req, socket, head) => {
       '\r\n',
     );
     if (head?.length) socket.unshift(head);
+    keepaliveSockets.add(socket);socket.once('close',()=>keepaliveSockets.delete(socket));
     handleKeepaliveSocket(socket);
   } catch {
     try { socket.destroy(); } catch {}

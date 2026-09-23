@@ -36,7 +36,7 @@ export class DecorationRenderer{
    if(id===B.FLOWER||id===B.MUSHROOM)w.v4Special.add(keyOf(x,y,z));
   }
  }
- const keep=new Set;for(const key of w.v4Special||[]){const[x,y,z]=parseKey(key),id=w.get(x,y,z);if(!DECOR.has(id)||Math.hypot(x-e.g.player.x,z-e.g.player.z)>65)continue;keep.add(key);let o=this.objects.get(key);if(o?.id!==id){if(o)o.group.parent?.remove(o.group);o=this.make(x,y,z,id);this.objects.set(key,o);}o.power=(e.circuitState?.powers.get(key)||0);if(id===B.WIRE)o.wire.material=this.mat(o.power?'#e95833':'#6f241f',!!o.power);if(id===B.REPEATER)o.dot.material=this.mat(e.circuitMemory.get(key)?.output?'#f26435':'#673528',true);}
+ const keep=new Set;for(const key of w.v4Special||[]){const[x,y,z]=parseKey(key),id=w.get(x,y,z);if(!DECOR.has(id)||Math.hypot(x-e.g.player.x,z-e.g.player.z)>65)continue;keep.add(key);let o=this.objects.get(key);const stage=[B.CARROTS,B.POTATOES,B.BEETROOTS].includes(id)?Math.min(3,Math.floor(e.u.cropAge(x,y,z)/60)):0;if(o?.id!==id||o?.stage!==stage){if(o)o.group.parent?.remove(o.group);o=this.make(x,y,z,id);o.stage=stage;this.objects.set(key,o);}o.power=(e.circuitState?.powers.get(key)||0);if(id===B.WIRE)o.wire.material=this.mat(o.power?'#e95833':'#6f241f',!!o.power);if(id===B.REPEATER)o.dot.material=this.mat(e.circuitMemory.get(key)?.output?'#f26435':'#673528',true);}
  for(const[k,o]of this.objects)if(!keep.has(k)){o.group.parent?.remove(o.group);this.objects.delete(k);}}
  for(const o of this.objects.values()){if(o.id===B.PORTAL||o.id===B.PORTAL_Z){o.group.children[0].material.opacity=.42+Math.sin(t*.002+o.x)*.12;o.group.children[0].scale.x=1+.025*Math.sin(t*.003);}if(o.id===B.BREWING_STAND&&o.bottle)o.bottle.rotation.y=t*.001;if(o.id===B.CAMPFIRE&&o.flame)o.flame.scale.y=.8+.2*Math.sin(t*.02);}
  }
