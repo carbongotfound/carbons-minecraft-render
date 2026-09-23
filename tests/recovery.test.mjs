@@ -13,3 +13,7 @@ test('bounded recovery retains the first backup and recent checkpoints per accou
 test('browser restart restores the active credential but does not switch an existing tab',()=>{
  setup();rememberAccount({id:'A',token:'secret-A',name:'A'});rememberAccount({id:'B',token:'secret-B',name:'B'});localStorage.setItem('carbon-active-account','A');restoreDeviceLogin();assert.equal(sessionStorage.getItem('carbon-session-v8'),'secret-A');assert.equal(sessionStorage.getItem('carbon-expected-account'),'A');sessionStorage.setItem('carbon-session-v8','secret-B');restoreDeviceLogin();assert.equal(sessionStorage.getItem('carbon-session-v8'),'secret-B');assert.equal(savedAccounts().length,2);
 });
+
+test('deliberately creating a separate account does not reopen the previous account on reload',()=>{
+ setup();rememberAccount({id:'A',token:'secret-A',name:'A'});localStorage.setItem('carbon-active-account','A');sessionStorage.setItem('carbon-pending-switch',JSON.stringify({target:{fresh:true,name:'New'}}));restoreDeviceLogin();assert.equal(sessionStorage.getItem('carbon-session-v8'),null);assert.equal(savedAccounts()[0].id,'A');
+});
