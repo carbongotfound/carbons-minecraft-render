@@ -23,7 +23,15 @@ export class Expansion{
  async edit(x,y,z,block,meta){return this.batch([{x,y,z,block,meta:meta||{dir:facing(this.g.player.yaw)}}]);}
  installNetwork(){const n=this.g.net,oldPacket=n.packet.bind(n);n.packet=()=>({...oldPacket(),version:4,dimension:this.g.dimension,riding:this.riding?.id||null});
   n.edit=(x,y,z,b)=>this.edit(x,y,z,b);
-  n.pull=async()=>{if(n.syncing)return n.syncing;const dim=n.dimension||'overworld',w=n.world;const task=(async()=>{let cursor=n.cursor||0;for(;;){let q=n.client.from(dim==='overworld'?'carbon_survival_blocks':'carbon_dimension_blocks').select('*').gt('revision',cursor).order('revision').limit(1000);if(dim!=='overworld')q=q.eq('dimension',dim);const{data,error}=await q;if(error)throw Error(error.message);for(const row of data||[]){w.apply(row);cursor=Math.max(cursor,Number(row.revision));}if(n.dimension===dim)n.cursor=cursor;if(data.length<1000)break;}})();n.syncing=task;try{await task;}finally{if(n.syncing===task)n.syncing=null;}};
+  n.pull=async()=>{if(n.syncing)return n.syncing;const dim=n.dimension||'overworld',w=n.world;const task=(async()=>{
+   // Page with >= and an offset for rows that share the cursor revision. A plain "> cursor" page skips
+   // every remaining row with the same revision (batched edits), which lost saved builds on rejoin.
+   let cursor=n.cursor||0,tie=n.cursorTie?.rev===cursor?n.cursorTie.count:0;
+   for(;;){let q=n.client.from(dim==='overworld'?'carbon_survival_blocks':'carbon_dimension_blocks').select('*').gte('revision',cursor).order('revision').order('x').order('y').order('z').range(tie,tie+999);if(dim!=='overworld')q=q.eq('dimension',dim);const{data,error}=await q;if(error)throw Error(error.message);
+    for(const row of data||[]){w.apply(row);const r=Number(row.revision);if(r>cursor){cursor=r;tie=1;}else tie++;}
+    if(n.dimension===dim){n.cursor=cursor;n.cursorTie={rev:cursor,count:tie};}if((data||[]).length<1000)break;}})();n.syncing=task;try{await task;}finally{if(n.syncing===task)n.syncing=null;}};
+  // Returning after a while: re-read every saved edit (apply() ignores rows it already has).
+  let hiddenAt=0;document.addEventListener('visibilitychange',()=>{if(document.visibilityState==='hidden'){hiddenAt=performance.now();return;}if(n.session&&hiddenAt&&performance.now()-hiddenAt>60000){n.cursor=0;n.cursorTie=null;n.pull().catch(()=>{});}});
   const rawMove=n.hooks.move;n.hooks.move=p=>{n.members.set(p.id,{...n.members.get(p.id),...p});if((p.dimension||'overworld')===this.g.dimension){rawMove(p);}else{this.g.positions.delete(p.id);const a=this.g.view.avatars.get(p.id);if(a)a.root.visible=false;}};
   const rawPresence=n.hooks.presence;n.hooks.presence=(members,id)=>{const local=new Map([...members].filter(([i,p])=>(p.dimension||'overworld')===this.g.dimension));rawPresence(local,id);$('online').textContent=members.size||1;};
   const rawRpc=this.u.rpc.bind(this.u);this.u.rpc=(op,p={})=>rawRpc(op,{dimension:this.g.dimension,...p});

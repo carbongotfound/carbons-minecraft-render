@@ -19,8 +19,11 @@ export class AccountSaves {
   // Unsynced recovery belongs to this account and may only replace the server
   // version it was based on. A newer server save wins after a device transfer.
   const recovered=cached?.dirty&&cached.revision===result.revision?cached.state:null;
-  let state=recovered||result.state||cached?.state||(allowLegacy?legacy:null);
-  if(!state&&chooseLegacy&&legacy?.inventory?.some(Boolean)&&await chooseLegacy(legacy,session))state=legacy;
+  // A server revision lower than this device's cache means the saves were reset on the server
+  // (for example after a world reset); old device copies must not bring the old inventory back.
+  const serverReset=!!cached&&Number(result.revision)<Number(cached.revision||0);
+  let state=recovered||result.state||(serverReset?null:cached?.state||(allowLegacy?legacy:null));
+  if(!state&&!serverReset&&chooseLegacy&&legacy?.inventory?.some(Boolean)&&await chooseLegacy(legacy,session))state=legacy;
   state||={};
   backupSave(state,{owner:session.id,name:session.name,reason:'Joined account'});
   this.apply(state);this.ready=true;this.lastBackup=Date.now();
@@ -34,6 +37,13 @@ export class AccountSaves {
   if(Date.now()-(this.lastBackup||0)>300000){backupSave(this.pending,{owner:this.session.id,name:this.session.name});this.lastBackup=Date.now();}
   write(accountSaveKey(this.session.id),{state:this.pending,revision:this.revision,dirty:true,time:Date.now()});
   if(!this.timer)this.timer=setTimeout(()=>{this.timer=null;this.flush().catch(()=>{this.g.accountSaveError='Save pending: reconnecting';});},2000);
+ }
+ // Page unload cancels ordinary fetches, so the last save goes out as a keepalive request.
+ flushOnExit(){
+  if(!this.ready||!this.pending||!this.session)return false;const c=this.g.net?.client,url=c?.supabaseUrl,key=c?.supabaseKey;if(!url||!key)return false;
+  const state=this.pending,body=JSON.stringify({p_id:this.session.id,p_token:this.session.token,p_writer:this.writer,p_op:'save',p_revision:this.revision,p_state:state});
+  if(body.length>60000)return false;clearTimeout(this.timer);this.timer=null;
+  try{fetch(url+'/rest/v1/rpc/carbon_account_save',{method:'POST',keepalive:true,headers:{'content-type':'application/json',apikey:key,authorization:'Bearer '+key},body}).catch(()=>{});return true;}catch{return false;}
  }
  async flush(){
   clearTimeout(this.timer);this.timer=null;
