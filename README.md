@@ -1,4 +1,4 @@
-# Carbons Minecraft 0.9.6 Render package
+# Carbons Minecraft 0.9.7 Render package
 
 Full game source plus a long-running Node static server for Render. Multiplayer persistence stays on the existing Supabase project. The game itself does not use this process for multiplayer sockets.
 
@@ -7,6 +7,18 @@ The server binds `0.0.0.0` and `process.env.PORT` (local default `10000`) and se
 Presence v8 uses per-tab sessionStorage, explicit join/leave events, main-menu/tab-close leave only, and a 45-second crash fallback. ESC never leaves.
 
 Terrain v3 smooths rivers/mountains and reduces ravines. `supabase/RESET_WORLD.sql` repeats the shared world reset.
+
+## Realistic blocks, sky and weather (0.9.7)
+
+- **High-detail block textures.** About 90 block tiles are repainted at the atlas's full 32 × 32 resolution (previously 16px art scaled up). The textures are tileable, noise-based materials: grass blades, pebbly dirt, cracked stone, rounded cobblestone, wood grain and rings, mortar-lined bricks, shaded ore veins and brushed metal. The atlas layout is unchanged, so saves, icons and the Canvas fallback are unaffected. Textures are mipmapped, with the mip level clamped per tile so distant terrain stops shimmering without tiles bleeding into each other.
+- **Minecraft-style light.** Sky light and torch light are now separate vertex channels. At night the world is moonlit, and torches, glowstone, lava, lit lamps and magma keep a warm glow using Minecraft's light curve. Torch light no longer passes through walls. The eight real-time torch point lights are turned off: they lit everything nearby, added cost to every pixel, and recompiled shaders whenever the number of visible torches changed. The sun and moon now move with the time of day, so block faces shade differently in the morning and afternoon.
+- **Sky.** A single sky pass draws a gradient sky with sunrise and sunset glow, a square sun and moon (eight moon phases), rotating stars and Minecraft-like 3D block clouds that drift with the wind. Fog matches the horizon colour and render distance, which hides the chunk edge.
+- **Water and weather.** Water has gentle waves, sky reflections that are stronger at grazing angles, and sun glints. The old flat sea plane, which covered lake beds, is hidden. Underwater (and in lava) the view uses dense tinted fog. Rain and snow are GPU particles around the player that stop under roofs. Storms darken the sky and add lightning flashes, with thunder when sound is on.
+- **Leaves and ambience.** Fancy leaves are see-through and sway in the wind. They use their own cutout material, so solid terrain still gets early depth rejection, and faces between two leaf blocks are culled so canopies stay cheap. A subtle vignette frames the view.
+- **Block sounds.** With sound on, footsteps, mining hits, breaking and placing produce material sounds: grass, gravel, sand, snow, wood, stone, glass and wool. These are synthesised; no audio files are downloaded.
+- **Graphics settings → "Sky, water & leaves: FANCY/FAST".** Fast keeps the sky, lighting and water but uses opaque leaves, flat clouds, no sway and lighter precipitation. Phones and machines with four or fewer CPU threads start on Fast. **Low lag** selects Fast and **Crisp defaults** selects Fancy. The choice is stored per device.
+
+Verification: `npm test`, `npm run test:browser`, `npm run test:performance`, `npm run test:paper`, `npm run test:world`, `npm run test:account` and the new `npm run test:effects`. The effects test covers the sky pass, cutout leaves, separate torch and sky light, the night sky, storms, the Fancy/Fast rebuild and its persistence, and the Canvas fallback. In software WebGL, Fast renders the test scene in about 94 ms, compared with 66 ms before this update; Fancy leaves in a dense forest cost more. These software timings show relative cost, not frame rates on real GPUs.
 
 ## Account recovery and graphics fixes (0.9.5)
 

@@ -1,6 +1,7 @@
 import {hash} from './core.js';
 import {BLOCKS, TILES} from './expansion-data.js';
 import {Nearest} from './engine.js';
+import {paintHDTextures} from './hd-textures.js';
 
 // Original 16px pixel art. Keep the atlas layout used by workers and held blocks.
 function tilePainter(atlas, tile) {
@@ -156,6 +157,7 @@ export function installVoxelArt(view) {
   }
   paint(atlas, 254, 'log_top', '#a38458');
   paint(atlas, 255, 'log_top', '#d7c48e');
+  paintHDTextures(atlas);
   const previous = globalThis.__carbonTile;
   globalThis.__carbonTile = (id, face) => (id === 95 || id === 98) && (face === 2 || face === 3) ? (id === 95 ? 254 : 255) : previous?.(id, face);
   for (const material of [view.material, view.glassMat, view.held?.material].flat()) if (material?.map) {
