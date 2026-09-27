@@ -1,5 +1,5 @@
 import {Mesh,BoxGeometry,ShaderMaterial,Color,Vector3,CanvasTexture,makeGeometry} from './engine.js';
-import {HD_LEAF_TILES,HD_EMISSIVE_TILES} from './hd-textures.js';
+import {HD_LEAF_TILES,HD_EMISSIVE_TILES,PLANT_TILES} from './hd-textures.js';
 
 // Sky, water, block light and weather. Everything here is GPU-side and costs a
 // handful of draw calls: one sky/cloud pass, one precipitation mesh and shader
@@ -106,7 +106,7 @@ class Realism {
   const update=v.update.bind(v);v.update=(dt,t)=>{try{this.frame(dt,t);}catch(e){if(!this.warned){this.warned=true;console.warn('Visual effects paused:',e);}}update(dt,t);};
  }
  makeFlags(){const c=document.createElement('canvas');c.width=256;c.height=1;const x=c.getContext('2d');x.fillStyle='#000';x.fillRect(0,0,256,1);
-  for(const t of HD_LEAF_TILES){x.fillStyle='#ff0000';x.fillRect(t,0,1,1);}for(const t of HD_EMISSIVE_TILES){x.fillStyle='#00ff00';x.fillRect(t,0,1,1);}
+  for(const t of HD_LEAF_TILES){x.fillStyle='#ff0000';x.fillRect(t,0,1,1);}for(const t of HD_EMISSIVE_TILES){x.fillStyle='#00ff00';x.fillRect(t,0,1,1);}for(const t of Object.values(PLANT_TILES)){x.fillStyle='#0000ff';x.fillRect(t,0,1,1);}
   const tex=new CanvasTexture(c);tex.magFilter=tex.minFilter=1003;tex.generateMipmaps=false;tex.flipY=false;tex.needsUpdate=true;return tex;}
  setupTextures(){
   // Mipmaps stop distant blocks shimmering; the shader clamps the level so tiles never bleed.
@@ -117,21 +117,23 @@ class Realism {
   material.onBeforeCompile=shader=>{
    Object.assign(shader.uniforms,{uTime:self.time,uSway:self.sway,uFlags:{value:self.flagsTexture},uTorch:self.torch,uFancyLeaves:self.fancyLeaves});
    shader.vertexShader=shader.vertexShader
-    .replace('#include <common>','#include <common>\nuniform float uTime,uSway;uniform sampler2D uFlags;varying float vBlockLight,vEmissive,vLeaf,vEncoded;')
+    .replace('#include <common>','#include <common>\nuniform float uTime,uSway;uniform sampler2D uFlags;varying float vBlockLight,vEmissive,vLeaf,vEncoded,vPlant;')
     .replace('#include <color_vertex>',`#include <color_vertex>
      vBlockLight=0.;vEncoded=0.;
      #ifdef USE_COLOR
      if(color.b>1.5){vBlockLight=color.b-2.;vColor.rgb=vec3(color.g);vEncoded=1.;}
      #endif`)
     .replace('#include <begin_vertex>',`#include <begin_vertex>
-     vEmissive=0.;vLeaf=0.;
+     vEmissive=0.;vLeaf=0.;vPlant=0.;
      #ifdef USE_MAP
-     float tileId=floor(uv.x*16.)+floor((1.-uv.y)*16.)*16.;vec4 tileFlags=texture(uFlags,vec2((tileId+.5)/256.,.5));vEmissive=tileFlags.g;vLeaf=tileFlags.r;
+     float tileId=floor(uv.x*16.)+floor((1.-uv.y)*16.)*16.;vec4 tileFlags=texture(uFlags,vec2((tileId+.5)/256.,.5));vEmissive=tileFlags.g;vLeaf=tileFlags.r;vPlant=tileFlags.b;
+     if(tileFlags.b>.5&&uSway>0.){float anchor=1.-fract((1.-uv.y)*16.),ph=uTime*2.1+position.x*.9+position.z*.7;transformed.x+=sin(ph)*.07*anchor*uSway;transformed.z+=cos(ph*1.2)*.06*anchor*uSway;}
      if(vLeaf>.5&&uSway>0.){float ph=uTime*1.6+position.x*.63+position.z*.41+position.y*.27;transformed.x+=sin(ph)*.032*uSway;transformed.z+=cos(ph*1.13)*.028*uSway;transformed.y+=sin(ph*.71)*.012*uSway;}
      #endif`)
     .replace('#include <fog_vertex>','#ifdef USE_FOG\nvFogDepth=length(mvPosition.xyz);\n#endif');
    shader.fragmentShader=shader.fragmentShader
-    .replace('#include <common>','#include <common>\nuniform float uTime,uFancyLeaves;uniform vec3 uTorch;varying float vBlockLight,vEmissive,vLeaf,vEncoded;')
+    .replace('#include <common>','#include <common>\nuniform float uTime,uFancyLeaves;uniform vec3 uTorch;varying float vBlockLight,vEmissive,vLeaf,vEncoded,vPlant;')
+    .replace('#include <normal_fragment_begin>','#include <normal_fragment_begin>\n if(vPlant>.5)normal=normalize(vNormal);')
     .replace('#include <map_fragment>',`#ifdef USE_MAP
      vec2 texel=vMapUv*512.;vec2 ddx=dFdx(texel),ddy=dFdy(texel);float lod=clamp(.5*log2(max(max(dot(ddx,ddx),dot(ddy,ddy)),1e-6)),0.,4.);
      vec4 sampledDiffuseColor=textureLod(map,vMapUv,lod);
@@ -217,7 +219,7 @@ class Realism {
  setLevel(level){this.level=level==='fast'?'fast':'fancy';setEffectsLevel(this.level);this.applyLevel(false);}
  applyLevel(initial){
   const fancy=this.level==='fancy';this.sway.value=fancy?1:0;this.fancyLeaves.value=fancy?1:0;this.skyUniforms.uCloudSteps.value=fancy?24:1;
-  const changed=this.v.fancyLeaves!==fancy;this.v.fancyLeaves=fancy;
+  const changed=this.v.fancyLeaves!==fancy||this.v.plantLevel!==(fancy?2:1);this.v.fancyLeaves=fancy;this.v.plantLevel=fancy?2:1;this.v.plantTiles=PLANT_TILES;
   if(changed&&!initial){const stream=this.g.frontier?.stream;stream?.tables();for(const key of this.v.chunks.keys())this.g.world.dirty.add(key);}
  }
  weatherState(){const r=this.g.frontier?.requested;return this.g.dimension==='overworld'?(r?.weather||'clear'):'clear';}
@@ -238,7 +240,7 @@ class Realism {
   hor.lerp(c.sunsetHorizon,sunset*.55);
   if(rain>0){const k=rain*.8;zen.lerp(this.tmp.copy(c.rainZenith).multiplyScalar(.25+day*.75),k);hor.lerp(this.tmp.copy(c.rainHorizon).multiplyScalar(.2+day*.8),k);}
   // Lightning
-  if(storm&&overworld&&t>this.nextFlash){const first=!this.nextFlash;this.nextFlash=t+7000+Math.random()*16000;if(!first){this.flash=1;this.thunder=t+500+Math.random()*1800;}}
+  if(storm&&overworld&&t>this.nextFlash){const first=!this.nextFlash;this.nextFlash=t+7000+Math.random()*16000;if(!first){this.flash=1;this.flashes=(this.flashes||0)+1;this.thunder=t+500+Math.random()*1800;}}
   if(this.thunder&&t>this.thunder){this.thunder=0;g.sfx?.thunder?.();}
   this.flash=Math.max(0,this.flash-rdt*4);const flash=this.flash>0?(Math.sin(this.flash*20)>0?this.flash:this.flash*.3):0;
   u.uZenith.value.copy(zen);u.uHorizon.value.copy(hor);u.uSunset.value.copy(c.sunset);u.uSunsetAmt.value=sunset*(1-rain*.8);

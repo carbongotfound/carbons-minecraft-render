@@ -68,8 +68,8 @@ try {
     const g = window.__survival.game, r = g.realism;
     g.clock.sync({server_ms: Math.max(Date.now(), g.clock.lastServer + 1), world_ms: 330000, day_length_ms: 1200000}, performance.now());
     g.frontier.requested.weather = 'storm'; r.nextFlash = 1; await new Promise(res => setTimeout(res, 2500));
-    r.nextFlash = 1; await new Promise(res => setTimeout(res, 150));
-    return {rain: r.rain, amount: r.weatherUniforms.uAmount.value, flashed: r.flash > 0 || r.skyUniforms.uFlash.value > 0 || !!r.thunder};
+    const before = r.flashes || 0; r.nextFlash = 1; const t0 = performance.now(); while ((r.flashes || 0) === before && performance.now() - t0 < 5000) await new Promise(res => setTimeout(res, 50));
+    return {rain: r.rain, amount: r.weatherUniforms.uAmount.value, flashed: (r.flashes || 0) > before};
   });
   assert.ok(weather.rain > .5); assert.ok(weather.amount > .4); assert.equal(weather.flashed, true);
   await page.evaluate(() => { window.__survival.game.frontier.requested.weather = 'clear'; });
@@ -79,11 +79,10 @@ try {
   await page.locator('#graphics-effects').click();
   await page.waitForTimeout(6000);
   const fast = await page.evaluate(() => {
-    const g = window.__survival.game, v = g.view; let leafMeshes = 0;
-    for (const chunk of v.chunks.values()) for (const m of chunk.children) if (m.material === v.leafMat) leafMeshes++;
-    return {leafMeshes, stored: localStorage.getItem('carbon-effects-v1'), label: document.getElementById('graphics-effects').textContent, steps: g.realism.skyUniforms.uCloudSteps.value, sway: g.realism.sway.value};
+    const g = window.__survival.game, v = g.view; const cutoutTiles = (v) => { const tiles = new Set(); for (const chunk of v.chunks.values()) for (const m of chunk.children) if (m.material === v.leafMat) { const uv = m.geometry.attributes.uv.array; for (let i = 0; i < uv.length; i += 8) tiles.add(Math.floor(uv[i] * 16) + Math.floor((1 - uv[i + 1]) * 16) * 16); } return [...tiles]; };
+    return {leafTiles: cutoutTiles(v).filter(t => [7, 121, 124].includes(t)), plantTiles: cutoutTiles(v).filter(t => t >= 240 && t <= 246).length, stored: localStorage.getItem('carbon-effects-v1'), label: document.getElementById('graphics-effects').textContent, steps: g.realism.skyUniforms.uCloudSteps.value, sway: g.realism.sway.value};
   });
-  assert.equal(fast.leafMeshes, 0); assert.equal(fast.stored, 'fast'); assert.match(fast.label, /FAST/); assert.equal(fast.steps, 1); assert.equal(fast.sway, 0);
+  assert.deepEqual(fast.leafTiles, [], 'Fast mode draws leaves as opaque blocks'); assert.ok(fast.plantTiles > 0, 'plants stay in the cutout pass'); assert.equal(fast.stored, 'fast'); assert.match(fast.label, /FAST/); assert.equal(fast.steps, 1); assert.equal(fast.sway, 0);
   await page.reload({waitUntil: 'commit'}); await page.waitForFunction(() => !!window.__survival, null, {timeout: 180000});
   assert.equal(await page.evaluate(() => window.__survival.game.realism.level), 'fast');
 

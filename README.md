@@ -1,4 +1,4 @@
-# Carbons Minecraft 0.9.7 Render package
+# Carbons Minecraft 0.9.8 Render package
 
 Full game source plus a long-running Node static server for Render. Multiplayer persistence stays on the existing Supabase project. The game itself does not use this process for multiplayer sockets.
 
@@ -7,6 +7,27 @@ The server binds `0.0.0.0` and `process.env.PORT` (local default `10000`) and se
 Presence v8 uses per-tab sessionStorage, explicit join/leave events, main-menu/tab-close leave only, and a 45-second crash fallback. ESC never leaves.
 
 Terrain v3 smooths rivers/mountains and reduces ravines. `supabase/RESET_WORLD.sql` repeats the shared world reset.
+
+## Save and duplication fixes, realistic mobs and more Minecraft (0.9.8)
+
+**Fixes**
+- **Builds lost on rejoin.** Saved blocks were loaded 1000 at a time with "revision greater than the last one seen". Blocks that share a revision (batched edits such as fluids, gravity or several blocks placed in one action) were skipped at every page boundary. On rejoin, those builds vanished and mined blocks came back, so they could be mined again. Loading now pages with an offset within a shared revision, so every saved block loads. After a tab has been hidden for over a minute, the world is re-read in full.
+- **Item duplication on pickup.** Items used to be added to the inventory before the server confirmed the pickup. If the server then refused (for example because the player moved away), the rollback could not take back a stack that had already been placed or crafted, and the drop came back. Pickups are now added only after the server confirms them. Claimed drops cannot be recreated by a poll that was already in flight. A refused pickup leaves the inventory unchanged and waits 1.5 s before trying again.
+- **Progress on leave.** The last save is sent as a keepalive request when the page closes, and a save is also flushed whenever the tab is hidden. Browsers cancel ordinary requests during unload.
+- **Creepers.** The fuse used horizontal distance only, so a creeper several blocks below the player (at the foot of a hill or in a cave under you) or above them could ignite. It now uses true 3D distance, as in Minecraft: it ignites within 3 blocks and cancels beyond 7. The fuse step is also capped so a laggy host frame cannot jump it forward.
+
+**Realism and Minecraft features**
+- All 12 mob kinds are rebuilt with Minecraft proportions, box UV mapping and detailed procedural skins at twice Minecraft's texel density. The skeleton's ribs are see-through, and spider and enderman eyes glow in the dark. Each kind's skin and geometry are made once and shared by every mob of that kind, instead of creating new canvas textures for each mob.
+- Other players are skinned humanoids in their chosen shirt colour, and the first-person arm has a skin and sleeve.
+- Dropped blocks are textured mini-blocks. Items are Minecraft-style extruded 3D sprites, both on the ground and in the hand. Breaking and mining throw small textured block fragments.
+- Tall grass, ferns, poppies, dandelions, cornflowers and daisies grow on grass, and dead bushes on sand. They sway in the wind. They are generated with each chunk mesh, so they cost nothing to save and disappear when the block beneath changes. Fast mode shows half as many.
+- Torches and campfires give off flames and rising smoke, rendered on the GPU with one draw call.
+- Bats flutter in dark caves and fish (cod and salmon) swim in lakes. These are local ambience: each player sees their own, and they are not saved.
+- With sound on, animals, monsters and villagers make calls, hitting a mob plays its hurt sound, and picking up an item makes a pop. All sounds are synthesised.
+
+**World reset.** `supabase/RESET_WORLD.sql` clears all blocks, drops, containers, vehicles and mobs, and keeps accounts and inventories. An optional, commented-out section also wipes player progress; use it if duplicated items should go too. From 0.9.8 the game ignores device-cached saves that are newer than the server's copy, so a server-side wipe sticks. The reset has to be run by a project admin in the Supabase SQL editor.
+
+Verification: `npm test`, `npm run test:browser`, `test:performance`, `test:paper`, `test:world`, `test:account`, `test:effects`, and the new `npm run test:integrity`. The integrity test checks that 2,500 blocks load when 1,500 share one revision across page boundaries, that a pickup adds nothing before the server confirms it, that a stale poll does not recreate a claimed drop, that a refused pickup leaves the inventory unchanged, and that a creeper 6 blocks below the player never ignites while one beside them still explodes.
 
 ## Realistic blocks, sky and weather (0.9.7)
 
