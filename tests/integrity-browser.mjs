@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import {spawn} from 'node:child_process';
-import {chromium} from 'playwright';
+import {chromium} from './browser-runtime.mjs';
 
 // Regression checks for world loading, item pickups and creeper fuses. All network calls are stubbed.
 const port = 10007;

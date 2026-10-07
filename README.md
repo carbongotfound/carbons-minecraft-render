@@ -8,6 +8,21 @@ Presence v8 uses per-tab sessionStorage, explicit join/leave events, main-menu/t
 
 Terrain v3 smooths rivers/mountains and reduces ravines. `supabase/RESET_WORLD.sql` repeats the shared world reset.
 
+## Browser survival redesign
+
+Crisp original 16px textures, real stairs and connected fences/panes/bars now
+share geometry with player picking, collision and dropped items. Animals have
+native-density skins, distance-based gait, grazing, visible sheared wool, baby
+proportions and collision-checked movement. The browser UI preserves account
+login/recovery while adding compact HUD, fullscreen, F1 visibility and touch
+sprint/sneak; inventory and title layouts fit small screens.
+
+See [release and validation notes](docs/RELEASE.md). Run `npm run test:classic`
+for desktop/laptop/mobile layout and actual movement checks. Browser suites
+accept `BROWSER_EXECUTABLE_PATH` when a signed system Chrome is available;
+otherwise install the pinned browser with `npx playwright install chromium`.
+All browser fixtures isolate both HTTP and realtime from production Supabase.
+
 ## Save and duplication fixes, realistic mobs and more Minecraft (0.9.8)
 
 **Fixes**

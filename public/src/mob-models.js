@@ -2,9 +2,9 @@ import {Group,Mesh,BoxGeometry,Material,CanvasTexture,SRGB,Nearest,Color} from '
 import {hash} from './core.js';
 
 // Minecraft-proportioned mobs. Sizes are in model pixels (1/16 block); every box is
-// UV-mapped like a Minecraft skin, and each kind's skin is painted once at 2 texels per
-// pixel and shared by every mob of that kind. Only the material is per mob (for hurt flashes).
-const D = 2, PX = 1 / 16;
+// UV-mapped on the same 16-pixel-per-block grid as the terrain. Each original skin
+// is shared by every mob of that kind; only hurt-flash materials are per mob.
+const D = 1, PX = 1 / 16;
 const rgb = h => { const n = parseInt(h.slice(1), 16); return [n >> 16 & 255, n >> 8 & 255, n & 255]; };
 const mix = (a, b, t) => [a[0] + (b[0] - a[0]) * t, a[1] + (b[1] - a[1]) * t, a[2] + (b[2] - a[2]) * t];
 const mul = (c, f) => [c[0] * f, c[1] * f, c[2] * f];
@@ -96,26 +96,26 @@ function skinFor(kind, v = {}) {
     const hide = pal(['#2b1f17', '#3b2a1e', '#4b3727', '#5a4330']), white = pal(['#cfcac2', '#ddd8d0', '#e9e5de', '#f4f1eb']);
     const patches = seed => (f, w, h, set) => { for (let y = 0; y < h; y++) for (let x = 0; x < w; x++) { const white_ = vn(x, y, seed + FACES.indexOf(f), 7) > .6; set(x, y, mul(ramp(white_ ? white : hide, n2(x, y, seed + 9) * .5 + vn(x, y, seed, 2) * .5), f === 'bottom' ? .82 : 1)); } };
     P.body = patches(91); P.leg = layer(patches(93), (f, w, h, set) => { if (f !== 'top') rect(set, 0, h - 3 * D, w, 3 * D, (x, y) => ramp(pal(['#2a2420', '#3a332d']), n2(x, y, 94))); });
-    P.head = layer(patches(95), on('front', (w, h, set) => { eyes(set, w, 3, [240, 240, 236], [16, 14, 12], 4, 1.5); rect(set, 2 * D, 5 * D, 4 * D, 3 * D, (x, y) => ramp(pal(['#b98e84', '#c99d92', '#d6aca0']), n2(x, y, 96))); R(set, 2.5, 6, 1, 1, [70, 44, 40]); R(set, 4.5, 6, 1, 1, [70, 44, 40]); }));
+    P.head = layer(patches(95), on('front', (w, h, set) => { eyes(set, w, 3, [240, 240, 236], [16, 14, 12], 4, 2); rect(set, 2 * D, 5 * D, 4 * D, 3 * D, (x, y) => ramp(pal(['#b98e84', '#c99d92', '#d6aca0']), n2(x, y, 96))); R(set, 2, 6, 1, 1, [70, 44, 40]); R(set, 5, 6, 1, 1, [70, 44, 40]); }));
     P.horn = fur(pal(['#b8b2a2', '#d4cfc0', '#e8e4d6']), 97, 1, .5); P.udder = fur(pal(['#d99a9a', '#e7aaa8', '#f0bab6']), 98, 1, .4);
   } else if (kind === 'pig') {
     const skin = pal(['#d98a86', '#e59a94', '#eea8a1', '#f5b7ae', '#f9c4bb']);
     P.body = P.leg = layer(fur(skin, 101, 3, .25), (f, w, h, set) => { for (let i = 0; i < 14; i++) set(n2(i, f.length, 102) * w | 0, n2(i, 3, 102) * h | 0, [214, 128, 122]); });
-    P.head = layer(fur(skin, 103, 3, .25), on('front', (w, h, set) => { eyes(set, w, 3, [250, 250, 250], [24, 20, 20], 4, 1.5); }));
-    P.snout = layer(fur(pal(['#e3928d', '#ec9f98']), 105, 1, .3), on('front', (w, h, set) => { R(set, .5, 1, 1, 1, [150, 70, 70]); R(set, 2.5, 1, 1, 1, [150, 70, 70]); }));
+    P.head = layer(fur(skin, 103, 3, .25), on('front', (w, h, set) => { eyes(set, w, 3, [250, 250, 250], [24, 20, 20], 4, 2); }));
+    P.snout = layer(fur(pal(['#e3928d', '#ec9f98']), 105, 1, .3), on('front', (w, h, set) => { R(set, 0, 1, 1, 1, [150, 70, 70]); R(set, 3, 1, 1, 1, [150, 70, 70]); }));
     P.hoof = fur(pal(['#7a4d45', '#8a5a50']), 107, 1, .4);
   } else if (kind === 'sheep') {
     const wool = pal(['#bdb6a9', '#cfc9bd', '#dfdad0', '#ebe7df', '#f6f3ee']), face = pal(['#b69b85', '#c4a993', '#d0b7a2']);
     const curls = (f, w, h, set) => { for (let y = 0; y < h; y++) for (let x = 0; x < w; x++) { const c = Math.sin(x * 1.3 + vn(x, y, 111, 2) * 5) * Math.cos(y * 1.3 + vn(x, y, 112, 2) * 5); set(x, y, mul(ramp(wool, c * .35 + .55 + n2(x, y, 113) * .2), f === 'bottom' ? .8 : 1)); } };
     P.wool = curls; P.legWool = curls;
     P.body = fur(face, 115, 2, .4);
-    P.head = layer(fur(face, 117, 2, .35), on('front', (w, h, set) => { eyes(set, w, 2.5, [240, 236, 228], [24, 20, 18], 2, 1.5); R(set, 2, 4.5, 2, 1, [90, 64, 56]); }));
+    P.head = layer(fur(face, 117, 2, .35), on('front', (w, h, set) => { eyes(set, w, 2, [240, 236, 228], [24, 20, 18], 2, 2); R(set, 2, 4, 2, 1, [90, 64, 56]); }));
     P.headWool = layer(curls, on('front', (w, h, set) => { rect(set, 1 * D, 1.5 * D, (w / D - 2) * D, h - 1.5 * D, null); }));
     P.leg = fur(face, 119, 2, .35);
   } else if (kind === 'chicken') {
     const feathers = pal(['#d3cec4', '#e0dbd2', '#ebe7df', '#f5f2ec', '#ffffff']);
     P.body = P.wing = (f, w, h, set) => { for (let y = 0; y < h; y++) for (let x = 0; x < w; x++) set(x, y, mul(ramp(feathers, (y % 3 === 0 ? .2 : .6) + n2(x, y, 121) * .35), f === 'bottom' ? .82 : 1)); };
-    P.head = layer(P.body, on('front', (w, h, set) => { R(set, .5, 2, 1, 1, [18, 16, 14]); R(set, 2.5, 2, 1, 1, [18, 16, 14]); }));
+    P.head = layer(P.body, on('front', (w, h, set) => { R(set, 0, 2, 1, 1, [18, 16, 14]); R(set, 3, 2, 1, 1, [18, 16, 14]); }), on('left', (w, h, set) => { R(set, 0, 2, 1, 1, [18, 16, 14]); }), on('right', (w, h, set) => { R(set, 2, 2, 1, 1, [18, 16, 14]); }));
     P.beak = fur(pal(['#d69a22', '#e8b02e', '#f3c443']), 123, 1, .4); P.wattle = fur(pal(['#a31f1c', '#bd2a24', '#d03a30']), 125, 1, .4); P.leg = fur(pal(['#c9951e', '#dca72c']), 127, 1, .4);
   } else if (kind === 'villager') {
     const skin = pal(['#9a6e50', '#a8795a', '#b58665', '#c09270']), robe = pal({armorer: ['#4f5358', '#5b6066', '#686d74'], librarian: ['#d6ccb5', '#e0d7c2', '#ebe3d0'], farmer: ['#6a4f33', '#795c3d', '#876848']}[v.profession] || ['#6a4f33', '#795c3d', '#876848']);
@@ -158,7 +158,7 @@ function spec(kind, v) {
     }
     case 'cow': return {head: [0, 20, -8], parts: [h(12, 10, 18, 0, 17, 1, 'body'), h(4, 6, 1, 0, 11, 7, 'udder'), h(8, 8, 6, 0, 0, -3, 'head', 'head'), h(1, 3, 1, -4.5, 4.5, -2, 'horn', 'head'), h(1, 3, 1, 4.5, 4.5, -2, 'horn', 'head')], limbs: legs4('leg', 12, 4, -6, 7)};
     case 'pig': return {head: [0, 12, -8], parts: [h(10, 8, 16, 0, 10, 0, 'body'), h(8, 8, 8, 0, 0, -4, 'head', 'head'), h(4, 3, 1, 0, -1, -8.5, 'snout', 'head')], limbs: legs4('leg', 6, 3, -5, 7)};
-    case 'sheep': return {head: [0, 18, -8], parts: [h(8, 6, 16, 0, 16, 0, 'body'), h(8, 6, 16, 0, 16, 0, 'wool', 'root', 1.75), h(6, 6, 8, 0, 1, -3, 'head', 'head'), h(6, 6, 6, 0, 1.5, -1.5, 'headWool', 'head', .6)],
+    case 'sheep': return {head: [0, 18, -8], parts: [h(8, 6, 16, 0, 15, 0, 'body'), h(8, 6, 16, 0, 15, 0, 'wool', 'root', 1.75), h(6, 6, 8, 0, 1, -3, 'head', 'head'), h(6, 6, 6, 0, 1.5, -1.5, 'headWool', 'head', .6)],
       limbs: legs4('leg', 12, 3, -5, 7).map(l => ({...l, extra: h(4, 6, 4, 0, -3, 0, 'legWool', 'limb', .5)}))};
     case 'chicken': return {head: [0, 9, -4], parts: [h(6, 6, 8, 0, 8, 0, 'body'), h(1, 4, 6, -3.5, 9, 0, 'wing'), h(1, 4, 6, 3.5, 9, 0, 'wing'), h(4, 6, 3, 0, 3, -1.5, 'head', 'head'), h(4, 2, 2, 0, 3, -4, 'beak', 'head'), h(2, 2, 2, 0, 1, -3.5, 'wattle', 'head')],
       limbs: [{pivot: [-1.5, 5, 1], leg: true, part: h(1, 5, 1, 0, -2.5, 0, 'leg'), extra: h(3, .5, 3, 0, -4.75, -1, 'leg', 'limb')}, {pivot: [1.5, 5, 1], leg: true, part: h(1, 5, 1, 0, -2.5, 0, 'leg'), extra: h(3, .5, 3, 0, -4.75, -1, 'leg', 'limb')}]};
@@ -181,18 +181,18 @@ function build(kind, v) {
   const key = kind + (kind === 'villager' ? ':' + (v.profession || 'farmer') : kind === 'player' ? ':' + (v.color || '') : '');
   if (cache.has(key)) return cache.get(key);
   const s = spec(kind, v), paints = skinFor(kind, v), boxes = [];
-  const add = b => { b.tw = (2 * b.d + 2 * b.w) * D; b.th = (b.d + b.h) * D; boxes.push(b); return b; };
+  const add = b => { const w = Math.max(1, Math.round(b.w * D)), h = Math.max(1, Math.round(b.h * D)), d = Math.max(1, Math.round(b.d * D)); b.texels = [w, h, d]; b.tw = 2 * d + 2 * w; b.th = d + h; boxes.push(b); return b; };
   for (const p of s.parts) add(p);
   for (const l of s.limbs) { add(l.part); if (l.extra) add(l.extra); }
   if (s.rods) add(s.rod = {w: 2, h: 8, d: 2, paint: 'rod'});
   // Shelf-pack each box's unwrapped strip into one skin.
-  const W = 256; let x = 0, y = 0, row = 0;
+  const W = 128; let x = 0, y = 0, row = 0;
   for (const b of boxes.sort((a, c) => c.th - a.th)) { const tw = Math.ceil(b.tw), th = Math.ceil(b.th); if (x + tw > W) { x = 0; y += row; row = 0; } b.u = x; b.v = y; x += tw + 1; row = Math.max(row, th + 1); }
   const H = Math.max(16, 2 ** Math.ceil(Math.log2(y + row)));
   const canvas = document.createElement('canvas'); canvas.width = W; canvas.height = H;
   const ctx = canvas.getContext('2d'), img = ctx.createImageData(W, H), glowCanvas = paints.glow ? document.createElement('canvas') : null, glow = glowCanvas ? new Uint8ClampedArray(W * H * 4) : null;
   for (const b of boxes) {
-    const w = Math.round(b.w * D), hh = Math.round(b.h * D), d = Math.round(b.d * D);
+    const [w, hh, d] = b.texels;
     b.rects = {top: [b.u + d, b.v, w, d], bottom: [b.u + d + w, b.v, w, d], right: [b.u, b.v + d, d, hh], front: [b.u + d, b.v + d, w, hh], left: [b.u + d + w, b.v + d, d, hh], back: [b.u + 2 * d + w, b.v + d, w, hh]};
     const painter = paints[b.paint] || fur(pal(['#777777', '#888888']), 1);
     for (const f of FACES) {
@@ -233,17 +233,23 @@ export function buildMob(kind, v = {}) {
   const material = new Material({map: e.map, alphaTest: .5, transparent: !!s.translucent, depthWrite: !s.translucent});
   if (e.glow) { material.emissive = new Color('#ffffff'); material.emissiveMap = e.glow; }
   material.userData.original = material.color.clone();
-  const root = new Group, head = new Group, legs = [], arms = [];
-  const mesh = (b, parent) => { const m = new Mesh(b.geometry, material); m.position.set(b.x * PX, b.y * PX, b.z * PX); m.castShadow = !s.translucent; m.receiveShadow = true; parent.add(m); return m; };
+  const root = new Group, head = new Group, legs = [], arms = [], wool = [], wings = [];
+  const mesh = (b, parent) => { const m = new Mesh(b.geometry, material); m.name = b.paint; m.position.set(b.x * PX, b.y * PX, b.z * PX); m.castShadow = !s.translucent; m.receiveShadow = true; parent.add(m); if (/wool/i.test(b.paint)) wool.push(m); return m; };
   head.position.set(...s.head.map(n => n * PX)); root.add(head);
-  for (const p of s.parts) mesh(p, p.parent === 'head' ? head : root);
+  head.userData.restPosition = head.position.clone();
+  for (const p of s.parts) {
+    if (kind === 'chicken' && p.paint === 'wing') {
+      const pivot = new Group, side = Math.sign(p.x); pivot.position.set(side * 3 * PX, 11 * PX, 0);
+      const wing = mesh(p, pivot); wing.position.set(side * .5 * PX, -2 * PX, 0); root.add(pivot); wings.push(pivot);
+    } else mesh(p, p.parent === 'head' ? head : root);
+  }
   for (const l of s.limbs) {
     const pivot = new Group; pivot.position.set(...l.pivot.map(n => n * PX));
     let holder = pivot;
-    if (l.spider) { holder = new Group; holder.rotation.z = -l.spider.side * .6; holder.rotation.y = -l.spider.side * l.spider.row * .38; pivot.add(holder); }
+    if (l.spider) { holder = new Group; holder.rotation.z = -l.spider.side * .6; holder.rotation.y = -l.spider.side * l.spider.row * .38; pivot.userData.spider = l.spider; pivot.add(holder); }
     mesh(l.part, holder); if (l.extra) mesh(l.extra, holder);
     root.add(pivot); (l.arm ? arms : legs).push(pivot);
   }
   if (s.rods) { const rods = new Group; for (let j = 0; j < 3; j++) for (let i = 0; i < 4; i++) { const a = i * Math.PI / 2 + j * .6, r = (9 - j * 1.5) * PX, m = new Mesh(s.rod.geometry, material); m.position.set(Math.cos(a) * r, (6 + j * 7) * PX, Math.sin(a) * r); m.castShadow = true; rods.add(m); } root.add(rods); root.userData.rods = rods; }
-  return {root, head, legs, arms, mats: [material]};
+  return {root, head, legs, arms, wool, wings, mats: [material]};
 }

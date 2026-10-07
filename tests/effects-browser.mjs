@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import {spawn} from 'node:child_process';
 import {mkdir} from 'node:fs/promises';
-import {chromium} from 'playwright';
+import {chromium} from './browser-runtime.mjs';
 
 // Sky, water, block light, leaves, weather and the Fancy/Fast switch on the real WebGL renderer.
 const port = 10006; await mkdir('artifacts', {recursive: true});
@@ -38,7 +38,13 @@ try {
     }
     const atlas = v.atlas.getContext('2d').getImageData(7 * 32, 0, 32, 32).data; let holes = 0;
     for (let i = 3; i < atlas.length; i += 4) if (atlas[i] === 0) holes++;
-    return {installed: !!r, sky: v.scene.children.includes(r.sky), leafMeshes, encoded, vertices, holes, leafAlphaTest: v.leafMat.alphaTest,
+    let badFastLeafPixels=0;
+    const opaque=r.opaqueLeafTexture.image.getContext('2d');
+    for(const tile of [7,121,124]){
+      const pixels=opaque.getImageData(tile%16*32,Math.floor(tile/16)*32,32,32).data;
+      for(let i=0;i<pixels.length;i+=4)if(pixels[i+3]!==255||pixels[i+1]<=pixels[i])badFastLeafPixels++;
+    }
+    return {installed: !!r, sky: v.scene.children.includes(r.sky), leafMeshes, encoded, vertices, holes, badFastLeafPixels, leafAlphaTest: v.leafMat.alphaTest,
       solidAlphaTest: v.material.alphaTest, mipmaps: v.material.map.generateMipmaps, pointLights: v.scene.children.filter(o => o.isPointLight && o.visible).length,
       oldClouds: v.clouds.visible, label: document.getElementById('graphics-effects')?.textContent};
   });
@@ -46,6 +52,7 @@ try {
   assert.ok(fancy.leafMeshes > 0, 'fancy leaves use the cutout material');
   assert.ok(fancy.encoded > fancy.vertices * .9, 'terrain vertices carry separate sky and torch light');
   assert.ok(fancy.holes > 40 && fancy.holes < 600, 'leaf texture has see-through gaps');
+  assert.equal(fancy.badFastLeafPixels,0,'real Canvas Fast leaf artwork must remain green and fully opaque');
   assert.equal(fancy.leafAlphaTest, .5); assert.equal(fancy.solidAlphaTest, 0, 'solid terrain keeps early depth rejection');
   assert.equal(fancy.mipmaps, true); assert.equal(fancy.pointLights, 0); assert.equal(fancy.oldClouds, false);
   assert.match(fancy.label, /FANCY/);
@@ -77,7 +84,15 @@ try {
   // Graphics switch: Fast rebuilds leaves as opaque blocks and remembers the choice on this device.
   await page.evaluate(() => { document.getElementById('graphicsSettings').hidden = false; });
   await page.locator('#graphics-effects').click();
-  await page.waitForTimeout(6000);
+  await page.waitForFunction(() => {
+    const g=window.__survival.game,v=g.view;
+    if(v.fancyLeaves||g.frontier.stream.error)return false;
+    for(const chunk of v.chunks.values())for(const m of chunk.children)if(m.material===v.leafMat){
+      const uv=m.geometry.attributes.uv.array;
+      for(let i=0;i<uv.length;i+=2){const tile=Math.floor(uv[i]*16)+Math.floor((1-uv[i+1])*16)*16;if([7,121,124].includes(tile))return false;}
+    }
+    return true;
+  },null,{timeout:60000});
   const fast = await page.evaluate(() => {
     const g = window.__survival.game, v = g.view; const cutoutTiles = (v) => { const tiles = new Set(); for (const chunk of v.chunks.values()) for (const m of chunk.children) if (m.material === v.leafMat) { const uv = m.geometry.attributes.uv.array; for (let i = 0; i < uv.length; i += 8) tiles.add(Math.floor(uv[i] * 16) + Math.floor((1 - uv[i + 1]) * 16) * 16); } return [...tiles]; };
     return {leafTiles: cutoutTiles(v).filter(t => [7, 121, 124].includes(t)), plantTiles: cutoutTiles(v).filter(t => t >= 240 && t <= 246).length, stored: localStorage.getItem('carbon-effects-v1'), label: document.getElementById('graphics-effects').textContent, steps: g.realism.skyUniforms.uCloudSteps.value, sway: g.realism.sway.value};

@@ -1,3 +1,4 @@
+import {blockBoxes,surfaceQuads,faceUV,fullCube,COMPOSITE_BLOCKS} from './block-geometry.js';
 import {MAX_BLOCK_ID,DAYLIGHT_SENSOR,NIGHT_SENSOR} from './building-data.js';
 import {World,View,Network,BlockInfo,Vector3,Mesh,BoxGeometry,PlaneGeometry,Material,BasicMaterial,Group,Color,meshData,makeGeometry,addFace,FACES} from './engine.js';
 import {ITEMS,RECIPES,SMELTING,FUEL,Inventory,heightAt,hash} from './core.js';
@@ -89,8 +90,39 @@ export class Expansion{
  async useBucket(id,t){const liquid=this.liquidAhead(5);if(id==='glass_bottle'){if(liquid?.b!==14){this.a.toast('Aim at water to fill the bottle.');return;}this.g.inv.remove(id,1);this.g.inv.add('water_bottle',1);return;}if(id==='bucket'){if(!liquid){this.a.toast('Aim directly at nearby water or lava to fill the bucket.');return;}const k=keyOf(liquid.x,liquid.y,liquid.z),edits=[{...liquid,block:0}];for(const[key,row]of this.g.world.metadata||[]){if(row.meta?.origin===k){const[x,y,z]=parseKey(key);edits.push({x,y,z,block:0});}}for(let i=0;i<edits.length;i+=64){await this.batch(edits.slice(i,i+64));if(i+64<edits.length)await delay(90);}this.g.inv.remove(id,1);this.g.inv.add(liquid.b===14?'water_bucket':'lava_bucket',1);return;}
   if(!t)return;const p={x:t.x+t.n[0],y:t.y+t.n[1],z:t.z+t.n[2]};if(this.g.world.get(p.x,p.y,p.z))return;const b=id==='water_bucket'?14:B.LAVA;if(this.g.dimension==='nether'&&b===14){this.a.toast('Water evaporates in the Nether.');this.g.inv.remove(id,1);this.g.inv.add('bucket',1);return;}await this.edit(p.x,p.y,p.z,b,{fluid:true,source:true,level:0,origin:keyOf(p.x,p.y,p.z)});this.g.inv.remove(id,1);this.g.inv.add('bucket',1);
  }
- installRenderer(){const view=this.g.view;view.rebuild=(cx,cz)=>{const k=cx+','+cz,old=view.chunks.get(k);if(old){for(const o of old.children)o.geometry.dispose();view.scene.remove(old);}const sets=[meshData(),meshData(),meshData()],origin=this.g.dimension==='overworld'?512:256;for(let x=cx*16-origin;x<cx*16-origin+16;x++)for(let z=cz*16-origin;z<cz*16-origin+16;z++)for(let y=0;y<96;y++){const id=view.world.get(x,y,z);if(!id||OLD_DECOR.has(id)||DECOR.has(id))continue;const a=id>=40?blockShape(id):[0,0,0,1,1,1],partial=a&&(a[0]||a[1]||a[2]||a[3]!==1||a[4]!==1||a[5]!==1);const data=sets[id===14?2:id===9||id===B.GLASS_PANE?1:0];for(let f=0;f<6;f++){const face=FACES[f],nb=view.world.get(x+face.n[0],y+face.n[1],z+face.n[2]);if(!partial&&nb&&!OLD_DECOR.has(nb)&&!DECOR.has(nb)&&!([9,14].includes(nb)&&nb!==id)&&!([B.OAK_SLAB,B.STONE_SLAB,B.TRAPDOOR,B.TRAPDOOR_OPEN,B.IRON_DOOR,B.IRON_DOOR_OPEN,B.SNOW_LAYER].includes(nb)))continue;const start=data.p.length,col=data.col.length;addFace(data,x,y,z,id,f);if(partial)for(let v=0;v<4;v++)for(let c=0;c<3;c++)data.p[start+v*3+c]=[x,y,z][c]+a[c]+(data.p[start+v*3+c]-[x,y,z][c])*(a[c+3]-a[c]);if([B.GLOWSTONE,B.LAMP_ON,B.LAVA,B.MAGMA].includes(id))for(let j=col;j<data.col.length;j++)data.col[j]=1;}}const g=new Group;for(let i=0;i<3;i++)if(sets[i].p.length){const m=new Mesh(makeGeometry(sets[i]),[view.material,view.glassMat,view.waterMat][i]);m.receiveShadow=true;m.castShadow=i===0;g.add(m);}view.chunks.set(k,g);view.scene.add(g);};
+ installRenderer(){
+  const view=this.g.view;
+  view.rebuild=(cx,cz)=>{
+   const key=cx+','+cz,old=view.chunks.get(key);
+   if(old){for(const mesh of old.children)mesh.geometry.dispose();view.scene.remove(old);}
+   const sets=[meshData(),meshData(),meshData(),meshData()],origin=this.g.dimension==='overworld'?512:256,ordinaryFaces=FACES.map((face,f)=>({...face,f}));
+   const opaque=id=>id&&!OLD_DECOR.has(id)&&!DECOR.has(id)&&![9,14,124,125].includes(id)&&!COMPOSITE_BLOCKS.has(id)&&fullCube(shape(id));
+   for(let x=cx*16-origin;x<cx*16-origin+16;x++)for(let z=cz*16-origin;z<cz*16-origin+16;z++)for(let y=0;y<96;y++){
+    const id=view.world.get(x,y,z);
+    if(!id||OLD_DECOR.has(id)||DECOR.has(id))continue;
+    const fallback=shape(id)||[0,0,0,1,1,1];
+    const boxes=COMPOSITE_BLOCKS.has(id)?blockBoxes(id,{fallback,meta:this.meta(x,y,z),neighbor:(dx,dy,dz)=>view.world.get(x+dx,y+dy,z+dz),neighborMeta:(dx,dy,dz)=>this.meta(x+dx,y+dy,z+dz),solidNeighbor:opaque}):[fallback];
+    const partial=boxes.length!==1||!fullCube(boxes[0]);
+    const data=sets[id===14?2:id===9||id===124?1:id===125||view.fancyLeaves&&[6,97,100].includes(id)?3:0];
+    for(const quad of partial?surfaceQuads(boxes,FACES):ordinaryFaces){
+     const neighbor=view.world.get(x+quad.n[0],y+quad.n[1],z+quad.n[2]);
+     if(!partial&&(opaque(neighbor)||neighbor===id&&[9,14,6,97,100].includes(id)))continue;
+     const vertexStart=data.p.length,uvStart=data.uv.length,colorStart=data.col.length;
+     addFace(data,x,y,z,id,quad.f);
+     const tile=globalThis.__carbonTile?.(id,quad.f),tx=(tile??3)%16/16,ty=1-Math.floor((tile??3)/16)/16;
+     for(let v=0;v<4;v++){
+      const point=quad.v[v];for(let axis=0;axis<3;axis++)data.p[vertexStart+v*3+axis]=[x,y,z][axis]+point[axis];
+      if(partial){const[u,vv]=faceUV(quad.f,point);data.uv[uvStart+v*2]=tx+.00263671875+u*.0572265625;data.uv[uvStart+v*2+1]=ty-.05986328125+vv*.0572265625;}
+     }
+     if([B.GLOWSTONE,B.LAMP_ON,B.LAVA,B.MAGMA].includes(id))for(let i=colorStart;i<data.col.length;i++)data.col[i]=1;
+    }
+   }
+   const group=new Group;
+   for(let i=0;i<sets.length;i++)if(sets[i].p.length){const mesh=new Mesh(makeGeometry(sets[i]),[view.material,view.glassMat,view.waterMat,view.leafMat||view.material][i]);mesh.receiveShadow=true;mesh.castShadow=i===0||i===3;group.add(mesh);}
+   view.chunks.set(key,group);view.scene.add(group);
+  };
  }
+
  tick(dt,t){if(!this.initialized||this.g.transition||this.g.dead)return;this.decoration.update(t);this.updateFishing(t);this.updateVehicles(dt,t);this.updateBossVisual?.(t);if(this.riding)this.drive(dt,t);if(t>this.portalUntil){const p=this.g.player;let id=this.g.world.get(Math.floor(p.x),Math.floor(p.y+.4),Math.floor(p.z));if(![B.PORTAL,B.PORTAL_Z].includes(id))id=this.g.world.get(Math.floor(p.x),Math.floor(p.y),Math.floor(p.z));if([B.PORTAL,B.PORTAL_Z,B.END_PORTAL,B.END_EXIT].includes(id)){this.portalTime+=dt;this.portalOverlay.style.opacity=String(Math.min(.55,this.portalTime*.3));if(this.portalTime>1.2){this.portalTime=0;this.portalOverlay.style.opacity='0';const dim=id===B.END_PORTAL?'end':id===B.END_EXIT?'overworld':this.g.dimension==='nether'?'overworld':'nether';this.travel(dim);}}else{this.portalTime=0;this.portalOverlay.style.opacity='0';}}
   if(t-this.lastCircuit>120){this.lastCircuit=t;this.runCircuits(t);}
   if(this.a.mobs.authority&&!this.busy&&!this.g.net.writing){if(t-this.lastFluid>160){this.lastFluid=t;this.flowOne().catch(e=>console.warn('Fluid:',e.message));}if(!this.g.net.writing&&t-this.lastGravity>350){this.lastGravity=t;this.fallOne().catch(()=>{});}if(!this.g.net.writing&&t-this.lastHopper>1100){this.lastHopper=t;this.runHopper();}}

@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import {spawn} from 'node:child_process';
 import {writeFile,mkdir} from 'node:fs/promises';
-import {chromium} from 'playwright';
+import {chromium} from './browser-runtime.mjs';
 const port=10005;await mkdir('artifacts',{recursive:true});
 const server=spawn(process.execPath,['server.mjs'],{env:{...process.env,PORT:String(port)},stdio:'pipe',windowsHide:true});let browser;
 try{

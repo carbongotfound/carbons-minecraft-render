@@ -1,5 +1,5 @@
 import {Mesh,BoxGeometry,ShaderMaterial,Color,Vector3,CanvasTexture,makeGeometry} from './engine.js';
-import {HD_LEAF_TILES,HD_EMISSIVE_TILES,PLANT_TILES} from './hd-textures.js';
+import {HD_LEAF_TILES,HD_EMISSIVE_TILES,PLANT_TILES,paintOpaqueLeafTextures} from './hd-textures.js';
 
 // Sky, water, block light and weather. Everything here is GPU-side and costs a
 // handful of draw calls: one sky/cloud pass, one precipitation mesh and shader
@@ -91,10 +91,10 @@ const RAIN_FRAGMENT=`uniform float uSnow,uBright;varying float vA;varying vec2 v
 class Realism {
  constructor(g){
   this.g=g;const v=this.v=g.view;this.level=effectsLevel();
-  this.time={value:0};this.sway={value:1};this.fancyLeaves={value:1};
+  this.daylight={value:1};this.time={value:0};this.sway={value:1};this.fancyLeaves={value:1};
   this.sunDir=new Vector3(0,1,0);this.cam=new Vector3;
   this.torch={value:new Color(1,.6,.28)};
-  this.colors=Object.fromEntries(Object.entries({dayZenith:'#3d74d6',dayHorizon:'#a9cbee',nightZenith:'#03060f',nightHorizon:'#0d1628',sunset:'#f0864a',sunsetHorizon:'#e7a578',rainZenith:'#5d6873',rainHorizon:'#8e979f',underwater:'#0f3563',lava:'#c24a08',sunDay:'#fff4d8',sunLow:'#ffb35c',moon:'#b4c6f0',hemiDay:'#eef4ff',hemiNight:'#a3b2dc',groundDay:'#77705e',groundNight:'#4a5264',cloudDay:'#ffffff',cloudNight:'#2a3040',cloudSunset:'#f3b48d'}).map(([k,h])=>[k,new Color(h)]));
+  this.colors=Object.fromEntries(Object.entries({dayZenith:'#3d74d6',dayHorizon:'#a9cbee',nightZenith:'#03060f',nightHorizon:'#0d1628',sunset:'#f0864a',sunsetHorizon:'#e7a578',rainZenith:'#5d6873',rainHorizon:'#8e979f',underwater:'#0f3563',lava:'#c24a08',sunDay:'#ffffff',sunLow:'#ffb35c',moon:'#b4c6f0',hemiDay:'#eef4ff',hemiNight:'#a3b2dc',groundDay:'#77705e',groundNight:'#4a5264',cloudDay:'#ffffff',cloudNight:'#2a3040',cloudSunset:'#f3b48d'}).map(([k,h])=>[k,new Color(h)]));
   this.tmp=new Color;this.zen=new Color;this.hor=new Color;this.lastRoof=0;this.roofed=false;this.flash=0;this.nextFlash=0;
   this.flagsTexture=this.makeFlags();
   v.leafMat=v.material.clone();v.leafMat.alphaTest=.5;v.leafMat.side=2;
@@ -111,11 +111,18 @@ class Realism {
  setupTextures(){
   // Mipmaps stop distant blocks shimmering; the shader clamps the level so tiles never bleed.
   const renderer=this.v.renderer;for(const m of [this.v.material,this.v.glassMat,this.v.leafMat])if(m?.map){m.map.generateMipmaps=true;m.map.minFilter=NEAREST_MIPMAP_LINEAR;m.map.magFilter=1003;m.map.anisotropy=Math.min(4,renderer.capabilities?.getMaxAnisotropy?.()||1);m.map.needsUpdate=true;}
+  // Canvas discards hidden RGB on alpha-zero texels. Fast leaves need an opaque
+  // source raster rather than forcing the cutout texture's alpha back to one.
+  const atlas=document.createElement('canvas');atlas.width=this.v.atlas.width;atlas.height=this.v.atlas.height;
+  atlas.getContext('2d').drawImage(this.v.atlas,0,0);paintOpaqueLeafTextures(atlas);
+  this.opaqueLeafTexture=new CanvasTexture(atlas);
+  for(const key of ['colorSpace','magFilter','minFilter','wrapS','wrapT','anisotropy','generateMipmaps','flipY'])this.opaqueLeafTexture[key]=this.v.material.map[key];
+  this.opaqueLeafTexture.needsUpdate=true;
  }
  patchTerrain(material){
   if(!material)return;const self=this;
   material.onBeforeCompile=shader=>{
-   Object.assign(shader.uniforms,{uTime:self.time,uSway:self.sway,uFlags:{value:self.flagsTexture},uTorch:self.torch,uFancyLeaves:self.fancyLeaves});
+   Object.assign(shader.uniforms,{uDaylight:self.daylight,uTime:self.time,uSway:self.sway,uFlags:{value:self.flagsTexture},uOpaqueLeaves:{value:self.opaqueLeafTexture},uTorch:self.torch,uFancyLeaves:self.fancyLeaves});
    shader.vertexShader=shader.vertexShader
     .replace('#include <common>','#include <common>\nuniform float uTime,uSway;uniform sampler2D uFlags;varying float vBlockLight,vEmissive,vLeaf,vEncoded,vPlant;')
     .replace('#include <color_vertex>',`#include <color_vertex>
@@ -132,20 +139,23 @@ class Realism {
      #endif`)
     .replace('#include <fog_vertex>','#ifdef USE_FOG\nvFogDepth=length(mvPosition.xyz);\n#endif');
    shader.fragmentShader=shader.fragmentShader
-    .replace('#include <common>','#include <common>\nuniform float uTime,uFancyLeaves;uniform vec3 uTorch;varying float vBlockLight,vEmissive,vLeaf,vEncoded,vPlant;')
+    .replace('#include <common>','#include <common>\nuniform float uTime,uFancyLeaves,uDaylight;uniform sampler2D uOpaqueLeaves;uniform vec3 uTorch;varying float vBlockLight,vEmissive,vLeaf,vEncoded,vPlant;')
     .replace('#include <normal_fragment_begin>','#include <normal_fragment_begin>\n if(vPlant>.5)normal=normalize(vNormal);')
     .replace('#include <map_fragment>',`#ifdef USE_MAP
      vec2 texel=vMapUv*512.;vec2 ddx=dFdx(texel),ddy=dFdy(texel);float lod=clamp(.5*log2(max(max(dot(ddx,ddx),dot(ddy,ddy)),1e-6)),0.,4.);
      vec4 sampledDiffuseColor=textureLod(map,vMapUv,lod);
-     if(vLeaf>.5&&(uFancyLeaves<.5||vEncoded<.5))sampledDiffuseColor.a=1.;
+     if(vLeaf>.5&&(uFancyLeaves<.5||vEncoded<.5))sampledDiffuseColor=textureLod(uOpaqueLeaves,vMapUv,lod);
      diffuseColor*=sampledDiffuseColor;
      #endif
      vec3 albedo=diffuseColor.rgb;`)
-    .replace('#include <opaque_fragment>',`// Minecraft's light curve: level/(4-3·level). Daylight Lambert tops out near 0.6 × albedo.
+    .replace('#include <opaque_fragment>',`// Fixed block-face shading and the level/(4-3·level) torch curve.
      float bl=clamp(vBlockLight,0.,1.);bl=bl/(4.-3.*bl);
-     outgoingLight=max(outgoingLight,albedo*uTorch*bl*.72);
+     #ifdef USE_COLOR
+     if(vEncoded>.5)outgoingLight=albedo*vColor.rgb*uDaylight;
+     #endif
+     outgoingLight=max(outgoingLight,albedo*uTorch*bl*.85);
      outgoingLight=mix(outgoingLight,albedo*(.86+.06*sin(uTime*1.7+vViewPosition.x*.3)),vEmissive);
-     float luma=dot(outgoingLight,vec3(.2126,.7152,.0722));outgoingLight=max(mix(vec3(luma),outgoingLight,1.12),0.);
+     outgoingLight=max(outgoingLight,0.);
      #include <opaque_fragment>`);
   };
   material.needsUpdate=true;
@@ -165,7 +175,7 @@ class Realism {
     .replace('#include <begin_vertex>',`#include <begin_vertex>
      vec3 wpos=(modelMatrix*vec4(transformed,1.)).xyz;
      float wave=sin(wpos.x*.8+uTime*1.3)*.5+sin(wpos.z*1.1-uTime*1.05)*.35+sin((wpos.x+wpos.z)*1.9+uTime*2.1)*.15;
-     transformed.y+=-uLower+wave*.035;
+     transformed.y+=-uLower+wave*.008;
      vWorldPos=(modelMatrix*vec4(transformed,1.)).xyz;vWorldNormal=normalize(mat3(modelMatrix)*objectNormal);`)
     .replace('#include <fog_vertex>','#ifdef USE_FOG\nvFogDepth=length(mvPosition.xyz);\n#endif');
    shader.fragmentShader=shader.fragmentShader
@@ -187,8 +197,8 @@ class Realism {
       vec3 R=reflect(-V,wn);vec3 refl=mix(uHorizonW,uZenithW,pow(clamp(R.y,0.,1.),.6))*skyVis;
       float spec=pow(max(dot(R,uSunDir),0.),260.)*uSunVis*skyVis;
       outgoingLight*=1.+(slope.x+slope.y)*.07;
-      outgoingLight=mix(outgoingLight,refl,clamp(fres*.62,0.,.6))+uSunW*spec*2.2;
-      alpha=clamp(alpha+fres*.25+spec,0.,.94);
+      outgoingLight=mix(outgoingLight,refl,clamp(fres*.12,0.,.12))+uSunW*spec*.06;
+      alpha=clamp(alpha+fres*.08,0.,.94);
      }
      gl_FragColor=vec4(outgoingLight,alpha);`);
   };
@@ -220,7 +230,7 @@ class Realism {
  applyLevel(initial){
   const fancy=this.level==='fancy';this.sway.value=fancy?1:0;this.fancyLeaves.value=fancy?1:0;this.skyUniforms.uCloudSteps.value=fancy?24:1;
   const changed=this.v.fancyLeaves!==fancy||this.v.plantLevel!==(fancy?2:1);this.v.fancyLeaves=fancy;this.v.plantLevel=fancy?2:1;this.v.plantTiles=PLANT_TILES;
-  if(changed&&!initial){const stream=this.g.frontier?.stream;stream?.tables();for(const key of this.v.chunks.keys())this.g.world.dirty.add(key);}
+  if(changed&&!initial){const stream=this.g.frontier?.stream;if(stream){stream.generation++;if(stream.capture)stream.capture.world.dirty.add(stream.capture.key);for(const job of stream.pending.values())job.world.dirty.add(job.key);stream.tables();}for(const key of this.v.chunks.keys())this.g.world.dirty.add(key);}
  }
  weatherState(){const r=this.g.frontier?.requested;return this.g.dimension==='overworld'?(r?.weather||'clear'):'clear';}
  frame(dt,t){
@@ -234,7 +244,7 @@ class Realism {
   const elev=this.sunDir.y,day=smoothstep(-.18,.2,elev),sunset=Math.exp(-(((elev-.02)/.17)**2));
   // Weather
   const state=this.weatherState(),wet=state!=='clear'?1:0;this.rain=(this.rain??wet)+(wet-(this.rain??wet))*Math.min(1,rdt*.5);
-  const rain=this.rain,storm=state==='storm'||state==='snowstorm';
+  const rain=this.rain;this.daylight.value=(.075+day*.925)*(1-rain*.32);const storm=state==='storm'||state==='snowstorm';
   if(t-this.lastRoof>250){this.lastRoof=t;this.roofed=false;if(g.playing){const px=Math.floor(cam.x),pz=Math.floor(cam.z);for(let y=Math.floor(cam.y)+1;y<96;y++){const b=g.world.get(px,y,pz);if(b&&b!==14){this.roofed=true;break;}}}}
   const zen=this.zen.lerpColors(c.nightZenith,c.dayZenith,day),hor=this.hor.lerpColors(c.nightHorizon,c.dayHorizon,day);
   hor.lerp(c.sunsetHorizon,sunset*.55);

@@ -1,17 +1,17 @@
-import {skyExposed,findHostileSpawn,animalLure} from './mob-rules.js';
+import {skyExposed,findHostileSpawn,animalLure,mobDimensions,sheepGrazing,moveMob} from './mob-rules.js';
 import {Group,Mesh,BoxGeometry,Material,BasicMaterial,Vector3,CanvasTexture,SRGB,Nearest} from './engine.js';
 import {hash,ITEMS} from './core.js';
 import {shape} from './extra-data.js';
 import {clamp,angleDelta,damp} from './motion.js';
 import {SKINNED,buildMob} from './mob-models.js';
-const TYPES={cow:{hp:10,speed:.75,h:1.38,loot:[['raw_beef',2],['leather',1]]},sheep:{hp:8,speed:.8,h:1.35,loot:[['raw_mutton',2],['wool',1]]},chicken:{hp:4,speed:.8,h:.78,loot:[['raw_chicken',1],['feather',2]]},pig:{hp:10,speed:.85,h:1.18,loot:[['raw_porkchop',2]]},zombie:{hp:20,speed:2.35,h:1.95,hostile:true,burn:true,loot:[['rotten_flesh',1]]},skeleton:{hp:20,speed:2.5,h:1.95,hostile:true,burn:true,loot:[['bone',1],['arrow',2]]},creeper:{hp:20,speed:2.15,h:1.7,hostile:true,loot:[['gunpowder',1]]},spider:{hp:16,speed:2.1,h:.8,hostile:true,loot:[['string',2]]}};
+const TYPES={cow:{hp:10,speed:.75,h:1.4,r:.45,loot:[['raw_beef',2],['leather',1]]},sheep:{hp:8,speed:.8,h:1.3,r:.45,loot:[['raw_mutton',2],['wool',1]]},chicken:{hp:4,speed:.8,h:.7,r:.2,loot:[['raw_chicken',1],['feather',2]]},pig:{hp:10,speed:.85,h:.9,r:.45,loot:[['raw_porkchop',2]]},zombie:{hp:20,speed:2.35,h:1.95,r:.3,hostile:true,burn:true,loot:[['rotten_flesh',1]]},skeleton:{hp:20,speed:2.5,h:1.95,r:.3,hostile:true,burn:true,loot:[['bone',1],['arrow',2]]},creeper:{hp:20,speed:2.15,h:1.7,r:.3,hostile:true,loot:[['gunpowder',1]]},spider:{hp:16,speed:2.1,h:.9,r:.7,hostile:true,loot:[['string',2]]}};
 function skinTex(paint,w=16,h=16){const c=document.createElement('canvas');c.width=w;c.height=h;const g=c.getContext('2d');g.imageSmoothingEnabled=false;paint(g,w,h);const t=new CanvasTexture(c);t.colorSpace=SRGB;t.magFilter=t.minFilter=Nearest;t.needsUpdate=true;return t;}
 function blot(g,base,seed,n=50){g.fillStyle=base;g.fillRect(0,0,g.canvas.width,g.canvas.height);for(let i=0;i<n;i++){g.fillStyle=i%2?'#00000024':'#ffffff18';g.fillRect(hash(i,seed,2)*g.canvas.width|0,hash(i,seed,3)*g.canvas.height|0,1+(i%3===0),1);}}
 function zombieFace(g){blot(g,'#5B8F3C',4,36);g.fillStyle='#2f4a22';g.fillRect(0,0,16,3);g.fillStyle='#1f321a';g.fillRect(3,6,4,2);g.fillRect(9,6,4,2);g.fillStyle='#3e5f2a';g.fillRect(7,9,2,3);g.fillStyle='#2a1c14';g.fillRect(4,12,8,3);g.fillStyle='#6a3a32';g.fillRect(5,13,6,1);}
 function skeletonFace(g){blot(g,'#E8DFC6',8,18);g.fillStyle='#141210';g.fillRect(2,4,5,5);g.fillRect(9,4,5,5);g.fillRect(7,9,2,3);g.fillRect(3,13,10,2);g.fillStyle='#E8DFC6';g.fillRect(6,13,1,2);g.fillRect(9,13,1,2);}
 function creeperFace(g){blot(g,'#4F8A32',11,40);g.fillStyle='#101410';g.fillRect(2,4,4,4);g.fillRect(10,4,4,4);g.fillRect(6,8,4,2);g.fillRect(4,10,8,2);g.fillRect(4,10,2,6);g.fillRect(10,10,2,6);}
 export class MobSystem{
- constructor(g){this.g=g;this.mobs=new Map;this.models=new Map;this.arrows=new Map;this.lastState=0;this.lastSpawn=0;this.lastAnimals=0;this.lastHit=new Map;this.started=false;this.box=new BoxGeometry(1,1,1);this.lastHost=null;}
+ constructor(g){this.g=g;this.mobs=new Map;this.models=new Map;this.behaviors=new Map;this.arrows=new Map;this.lastState=0;this.lastSpawn=0;this.lastAnimals=0;this.lastHit=new Map;this.started=false;this.box=new BoxGeometry(1,1,1);this.lastHost=null;}
  get host(){let ids=[...(this.g.net?.members?.entries()||[])].filter(([id,p])=>p.version===3||id===this.g.net?.session?.id).map(([id])=>id);return ids.length?ids.sort()[0]:this.g.net?.session?.id;}
  get authority(){return !!this.g.net?.session&&this.host===this.g.net.session.id;}
  send(p){if(this.g.net?.connected)this.g.net.channel.send({type:'broadcast',event:'survival',payload:{...p,from:this.g.net.session.id,version:3}});}
@@ -60,11 +60,11 @@ export class MobSystem{
  attack(id,tool){if(this.authority)this.hit(this.g.net.session.id,id,tool);else this.send({kind:'mob-hit',target:id,tool});}
  visible(from,to){let d=new Vector3(to.x-from.x,to.y-from.y,to.z-from.z),distance=d.length();if(distance<.1)return true;d.multiplyScalar(1/distance);const hit=this.g.world.ray(new Vector3(from.x,from.y,from.z),d,distance);return !hit||hit.t>distance-.25;}
  hit(player,id,tool){const m=this.mobs.get(id);if(!m)return;const now=performance.now();if(now-(this.lastHit.get(player)||0)<500)return;const p=this.players().find(p=>p.id===player);if(!p||Math.hypot(p.x-m.x,p.z-m.z)>3.6||Math.abs(p.y-m.y)>2.5||!this.visible({x:p.x,y:p.y+1.6,z:p.z},{x:m.x,y:m.y+.8,z:m.z}))return;this.lastHit.set(player,now);this.hurtMob(m,ITEMS[tool]?.damage||1,player,p);}
- hurtMob(m,amount,player,source){if(m.kind==='spider')m.aggro=12;m.hp-=amount;m.hurtUntil=performance.now()+240;m.panic=4;const d=Math.max(.1,Math.hypot(m.x-source.x,m.z-source.z)),nx=m.x+(m.x-source.x)/d*.38,nz=m.z+(m.z-source.z)/d*.38;if(!this.g.world.collide({x:nx,y:m.y,z:nz},TYPES[m.kind].h,.34)){m.x=nx;m.z=nz;}m.vy=2.4;if(m.hp<=0)this.kill(m,player);}
+ hurtMob(m,amount,player,source){if(m.kind==='spider')m.aggro=12;m.hp-=amount;m.hurtUntil=performance.now()+240;m.panic=4;const d=Math.max(.1,Math.hypot(m.x-source.x,m.z-source.z)),nx=m.x+(m.x-source.x)/d*.38,nz=m.z+(m.z-source.z)/d*.38;if(!TYPES[m.kind].hostile)m.yaw=Math.atan2(-(m.x-source.x),-(m.z-source.z));const size=mobDimensions(m,TYPES[m.kind],this.g.clock.serverMs());if(!this.g.world.collide({x:nx,y:m.y,z:nz},size.height,size.radius)){m.x=nx;m.z=nz;}m.vy=2.4;if(m.hp<=0)this.kill(m,player);}
  kill(m,player){for(const[id,n]of TYPES[m.kind].loot){if(id==='wool'&&m.sheared)continue;this.g.drop(id,n,m.x,m.y+.6,m.z);}let xp=TYPES[m.kind].hostile?5:2;if(player===this.g.net.session.id){this.g.xp+=xp;this.g.upgrade?.a.save();}else if(player)this.send({kind:'xp',target:player,amount:xp});this.remove(m.id);this.lastState=0;}
- shear(player,id){const m=this.mobs.get(id),p=this.players().find(p=>p.id===player);if(!m||m.kind!=='sheep'||m.sheared||!p||Math.hypot(m.x-p.x,m.z-p.z)>3.5)return;m.sheared=true;m.regrow=(m.phase||0)+90;this.g.drop('wool',2,m.x,m.y+.7,m.z);this.lastState=0;}
+ shear(player,id){const m=this.mobs.get(id),p=this.players().find(p=>p.id===player);if(!m||m.kind!=='sheep'||m.sheared||Number(m.babyUntil)>this.g.clock.serverMs()||!p||Math.hypot(m.x-p.x,m.z-p.z)>3.5||Math.abs(m.y-p.y)>2||!this.visible({x:p.x,y:p.y+1.5,z:p.z},{x:m.x,y:m.y+.8,z:m.z}))return;m.sheared=true;m.regrow=(m.phase||0)+16+hash(Math.floor(m.x),Math.floor(m.z),9)*20;this.g.drop('wool',2,m.x,m.y+.7,m.z);this.lastState=0;}
  requestShear(id){if(this.authority)this.shear(this.g.net.session.id,id);else this.send({kind:'shear',target:id});}
- remove(id){const o=this.models.get(id);if(o){this.g.view.scene.remove(o.root);o.mats.forEach(m=>{if(!m.userData.shared)m.map?.dispose();m.dispose();});this.models.delete(id);}this.mobs.delete(id);}
+ remove(id){const o=this.models.get(id);if(o){this.g.view.scene.remove(o.root);o.mats.forEach(m=>{if(!m.userData.shared)m.map?.dispose();m.dispose();});this.models.delete(id);}this.behaviors.delete(id);this.mobs.delete(id);}
  projectile(p,remote=false){if(!p||typeof p.id!=='string'||this.arrows.has(p.id)||this.arrows.size>60||![p.x,p.y,p.z,p.vx,p.vy,p.vz].every(Number.isFinite))return;const root=new Group,mat=new Material({color:'#785931'}),tip=new Material({color:'#c0c2b7'}),shaft=new Mesh(this.box,mat),head=new Mesh(this.box,tip);shaft.scale.set(.035,.035,.6);head.scale.set(.075,.075,.11);head.position.z=-.34;root.add(shaft,head);root.position.set(p.x,p.y,p.z);this.g.view.scene.add(root);this.arrows.set(p.id,{...p,root,mat,tip,life:6});if(this.authority&&!remote)this.send({kind:'arrow-spawn',shot:p});}
  removeArrow(id){const a=this.arrows.get(id);if(!a)return;this.g.view.scene.remove(a.root);a.mat.dispose();a.tip.dispose();this.arrows.delete(id);}
  tickArrows(dt){for(const[id,a]of this.arrows){a.life-=dt;const old=new Vector3(a.x,a.y,a.z),delta=new Vector3(a.vx*dt,a.vy*dt,a.vz*dt),length=delta.length();let hit=length>0?this.g.world.ray(old,delta.clone().normalize(),length):null;a.x+=delta.x;a.y+=delta.y;a.z+=delta.z;a.vy-=9*dt;a.root.position.set(a.x,a.y,a.z);a.root.lookAt(a.x-a.vx,a.y-a.vy,a.z-a.vz);let stop=!!hit||a.life<=0||a.y<0;
@@ -88,13 +88,61 @@ const d3=Math.hypot(closest.x-m.x,(closest.y+.9)-(m.y+.85),closest.z-m.z),step=M
  const wet=this.g.world.get(Math.floor(m.x),Math.floor(m.y+.5),Math.floor(m.z))===14;
  m.burning=!wet&&skyExposed(this.g.world,m.x,m.y,m.z);if(m.burning){m.hp-=dt*2;if(m.hp<=0){this.kill(m,null);continue;}}}}
 
- else if(!def.hostile||m.kind==='spider'){if(Math.sin(m.phase*.55)>.1)speed=m.panic?3.3:def.speed;if(Math.floor(m.phase*2)%11===0)m.yaw+=dt*.8;const lured=animalLure(m,players,this.visible.bind(this));if(lured&&!m.panic){m.yaw=Math.atan2(-(lured.x-m.x),-(lured.z-m.z));speed=Math.hypot(lured.x-m.x,lured.z-m.z)>2?1:0;}if(m.sheared&&m.phase>m.regrow&&this.g.world.get(Math.floor(m.x),Math.floor(m.y)-1,Math.floor(m.z))===1)m.sheared=false;}
- if(speed){const nx=clamp(m.x-Math.sin(m.yaw)*speed*dt,-508,508),nz=clamp(m.z-Math.cos(m.yaw)*speed*dt,-508,508),r=m.kind==='spider'?.42:.34;
- if(!this.g.world.collide({x:nx,y:m.y,z:nz},def.h,r)){m.x=nx;m.z=nz;}else if(!this.g.world.collide({x:nx,y:m.y+1.01,z:nz},def.h,r)&&!this.g.world.collide({x:m.x,y:m.y+1.01,z:m.z},def.h,r)){m.x=nx;m.z=nz;m.y+=1.01;}else{m.yaw+=dt*(def.hostile?3:4);const side=m.yaw+.8;let xx=m.x-Math.sin(side)*speed*dt,zz=m.z-Math.cos(side)*speed*dt;if(!this.g.world.collide({x:xx,y:m.y,z:zz},def.h,r)){m.x=xx;m.z=zz;}}}
- m.vy=Math.max(-20,(m.vy||0)-(m.kind==='chicken'?8:22)*dt);let yy=m.y+m.vy*dt;if(!this.g.world.collide({x:m.x,y:yy,z:m.z},def.h,.33))m.y=yy;else{if(m.vy<0){for(let k=0;k<5;k++){let mid=(m.y+yy)/2;if(this.g.world.collide({x:m.x,y:mid,z:m.z},def.h,.33))yy=mid;else m.y=mid;}}m.vy=0;}if(m.y<0){m.y=this.ground(m.x,m.z);m.vy=0;}}
+ else if(!def.hostile||m.kind==='spider'){
+  let behavior=this.behaviors.get(m.id);if(!behavior){behavior={};this.behaviors.set(m.id,behavior);}
+  if(m.phase>=(behavior.turnAt||0)){const seed=Math.floor(m.phase);behavior.turnAt=m.phase+3+hash(seed,Math.floor(m.x),Math.floor(m.z))*4;behavior.wanderYaw=m.yaw+(hash(Math.floor(m.z),seed,37)-.5)*1.8;behavior.walking=hash(seed,Math.floor(m.z),45)>.3;}
+  m.pitch=0;if(m.panic)speed=3.3;else if(behavior.walking){m.yaw+=angleDelta(behavior.wanderYaw,m.yaw)*(1-Math.exp(-2*dt));speed=def.speed;}
+  const lured=animalLure(m,players,this.visible.bind(this));
+  if(lured&&!m.panic){const distance=Math.hypot(lured.x-m.x,lured.z-m.z);m.yaw+=angleDelta(Math.atan2(-(lured.x-m.x),-(lured.z-m.z)),m.yaw)*(1-Math.exp(-6*dt));m.pitch=clamp(Math.atan2(lured.y+1.2-(m.y+def.h*.8),Math.max(.1,distance)),-.35,.45);speed=distance>1.7?Math.max(1,def.speed):0;}
+  if(m.kind==='sheep'){
+   m.regrow??=m.phase+20+hash(Math.floor(m.x),Math.floor(m.z),71)*24;
+   if(sheepGrazing(m,this.g.world)&&!lured)speed=0;
+   if(m.phase>=m.regrow){const grass=this.g.world.get(Math.floor(m.x),Math.floor(m.y)-1,Math.floor(m.z))===1;if(grass&&!m.panic&&!lured)m.sheared=false;m.regrow=m.phase+(grass?28:8)+hash(Math.floor(m.x),Math.floor(m.z),Math.floor(m.phase))*24;}
+  }
+ }
+ let behavior=this.behaviors.get(m.id);if(!behavior){behavior={};this.behaviors.set(m.id,behavior);}
+ moveMob(this.g.world,m,def,speed,dt,{now:this.g.clock.serverMs(),state:behavior});if(m.y<0){m.y=this.ground(m.x,m.z);m.vy=0;}}
  if(now-this.lastState>95){this.lastState=now;this.send({kind:'mob-state',mobs:[...this.mobs.values()].map(({hurtUntil,...m})=>m)});}}
  }
- renderMobs(dt,now){this.tickArrows(dt);for(const [id,m]of this.mobs){const o=this.models.get(id);if(!o)continue;const moving=Math.hypot(o.root.position.x-m.x,o.root.position.z-m.z)>.012;o.root.position.x=damp(o.root.position.x,m.x,22,dt);o.root.position.z=damp(o.root.position.z,m.z,22,dt);o.root.position.y=damp(o.root.position.y,m.y,24,dt);o.root.rotation.y+=angleDelta(m.yaw,o.root.rotation.y)*(1-Math.exp(-18*dt));o.head.rotation.x=damp(o.head.rotation.x,m.pitch||0,14,dt);const baby=Number(m.babyUntil)>this.g.clock.serverMs()?.55:1,fuse=m.kind==='creeper'?(m.fuse||0):0,swell=fuse?1+fuse/1.5*.48+Math.sin(now*.05)*.04:1;o.root.scale.setScalar(baby*swell);const walk=moving?Math.sin(now*.013)*.7:0;for(let i=0;i<o.legs.length;i++)o.legs[i].rotation.x=damp(o.legs[i].rotation.x,walk*(i%2?1:-1)*(m.kind==='creeper'?.65:1),22,dt);if(o.arms?.length){const striking=(m.phase||0)-(m.attack||0)<.32;if(m.kind==='zombie'){const pose=striking?-2.15:-1.55;o.arms[0].rotation.x=damp(o.arms[0].rotation.x,pose+walk*.14,18,dt);o.arms[1].rotation.x=damp(o.arms[1].rotation.x,pose-walk*.14,18,dt);}else if(m.kind==='skeleton'){const draw=striking||((m.phase||0)-(m.attack||0)<.5);o.arms[0].rotation.x=damp(o.arms[0].rotation.x,draw?-1.05:-1.4,16,dt);o.arms[1].rotation.x=damp(o.arms[1].rotation.x,draw?-1.2:-1.45,16,dt);o.arms[0].rotation.z=damp(o.arms[0].rotation.z,draw?.18:.06,16,dt);o.arms[1].rotation.z=damp(o.arms[1].rotation.z,draw?-.18:-.06,16,dt);}}if(m.kind==='creeper'&&fuse>0){if(!o.lastHiss||now-o.lastHiss>Math.max(70,220-fuse*90)){o.lastHiss=now;this.g.upgrade?.a.beep(160+fuse*280,.09,.018+fuse*.02,'sawtooth');}}for(const mat of o.mats){mat.color.copy(mat.userData.original);if(m.hurtUntil>now)mat.color.lerp(new (mat.color.constructor)('#ef4840'),.6);else if(m.burning)mat.color.lerp(new (mat.color.constructor)('#ff9527'),.35);else if(fuse){const flash=Math.sin(now*.001*(8+fuse*18)*Math.PI*2);if(flash>0.05)mat.color.lerp(new (mat.color.constructor)('#ffffff'),.55+fuse*.25);}}}}
+ renderMobs(dt,now){
+  this.tickArrows(dt);
+  for(const [id,m]of this.mobs){
+   const o=this.models.get(id);if(!o)continue;
+   o.root.position.x=damp(o.root.position.x,m.x,22,dt);o.root.position.z=damp(o.root.position.z,m.z,22,dt);o.root.position.y=damp(o.root.position.y,m.y,24,dt);
+   o.root.rotation.y+=angleDelta(m.yaw,o.root.rotation.y)*(1-Math.exp(-18*dt));
+   if(this.authority||!this.g.frontier?.buffers?.has(id))this.animateModel(m,o,dt,now);
+  }
+ }
+ animateModel(m,o,dt,now,snapshotSpeed){
+  const traveled=Math.hypot(o.root.position.x-(o.last?.x??o.root.position.x),o.root.position.z-(o.last?.z??o.root.position.z));
+  const speed=snapshotSpeed??Math.min(4,traveled/Math.max(.001,dt));
+  // Phase advances by distance, so slow animals take slow steps and stopped
+  // animals settle naturally. Network corrections never create giant strides.
+  o.stride=(o.stride||0)+Math.min(.25,speed*dt)*9;
+  o.walkAmount=damp(o.walkAmount||0,speed>.08?Math.min(.7,speed*.65):0,12,dt);
+  const walk=Math.sin(o.stride)*o.walkAmount;o.walk=walk;o.last?.copy(o.root.position);
+  const baby=Number(m.babyUntil)>this.g.clock.serverMs()?.5:1;
+  const fuse=m.kind==='creeper'?(m.fuse||0):0,swell=fuse?1+fuse/1.5*.18+Math.sin(now*.05)*.025:1;
+  o.root.scale.set(baby*swell,baby*(fuse?1-fuse/1.5*.08:1),baby*swell);
+  o.head.scale.setScalar(baby<1?1.5:1);
+  const grazing=sheepGrazing(m,this.g.world)&&Math.abs(m.pitch||0)<.01;
+  o.head.rotation.x=damp(o.head.rotation.x,grazing?-.85+(Math.sin(now*.018)*.12):m.pitch||0,14,dt);
+  const rest=o.head.userData.restPosition;if(rest){o.head.position.y=damp(o.head.position.y,rest.y-(grazing?.22:0),10,dt);o.head.position.z=damp(o.head.position.z,rest.z-(grazing?.12:0),10,dt);}
+  for(const wool of o.wool||[])wool.visible=!m.sheared;
+  for(let i=0;i<o.legs.length;i++){
+   const leg=o.legs[i],spider=leg.userData.spider;
+   if(spider){leg.rotation.x=0;leg.rotation.y=Math.sin(o.stride+spider.row*.8)*o.walkAmount*.28*spider.side;leg.rotation.z=Math.max(0,Math.cos(o.stride+spider.row*.8))*o.walkAmount*.2*spider.side;}
+   else leg.rotation.x=damp(leg.rotation.x,walk*(i%2?1:-1)*(m.kind==='creeper'?.65:1),22,dt);
+  }
+  if(m.kind==='chicken')for(let i=0;i<(o.wings?.length||0);i++){const falling=(m.vy||0)<-.3,flap=falling?.35+Math.sin(now*.035)*.55:.08; o.wings[i].rotation.z=damp(o.wings[i].rotation.z,flap*(i?1:-1),18,dt);}
+  if(o.arms?.length){
+   const striking=(m.phase||0)-(m.attack||0)<.32;
+   if(m.kind==='zombie'){const pose=striking?-2.15:-1.55;o.arms[0].rotation.x=damp(o.arms[0].rotation.x,pose+walk*.14,18,dt);o.arms[1].rotation.x=damp(o.arms[1].rotation.x,pose-walk*.14,18,dt);}
+   else if(m.kind==='skeleton'){const draw=striking||((m.phase||0)-(m.attack||0)<.5);o.arms[0].rotation.x=damp(o.arms[0].rotation.x,draw?-1.05:-1.4,16,dt);o.arms[1].rotation.x=damp(o.arms[1].rotation.x,draw?-1.2:-1.45,16,dt);o.arms[0].rotation.z=damp(o.arms[0].rotation.z,draw?.18:.06,16,dt);o.arms[1].rotation.z=damp(o.arms[1].rotation.z,draw?-.18:-.06,16,dt);}
+  }
+  if(m.kind==='creeper'&&fuse>0&&(!o.lastHiss||now-o.lastHiss>Math.max(70,220-fuse*90))){o.lastHiss=now;this.g.upgrade?.a.beep(160+fuse*280,.09,.018+fuse*.02,'sawtooth');}
+  for(const mat of o.mats){mat.color.copy(mat.userData.original);if(m.hurtUntil>now)mat.color.lerp(new (mat.color.constructor)('#ef4840'),.6);else if(m.burning)mat.color.lerp(new (mat.color.constructor)('#ff9527'),.35);else if(fuse&&Math.sin(now*.001*(8+fuse*18)*Math.PI*2)>.05)mat.color.lerp(new (mat.color.constructor)('#ffffff'),.55+fuse*.25);}
+ }
  target(camera,blockDistance=4){const dir=this.g.direction;let best=null,distance=Math.min(3.4,blockDistance);for(const m of this.mobs.values()){let center=m.y+TYPES[m.kind].h*.55,dx=m.x-camera.position.x,dy=center-camera.position.y,dz=m.z-camera.position.z,along=dx*dir.x+dy*dir.y+dz*dir.z;if(along<0||along>distance)continue;const radius=m.kind==='chicken'?.3:.62;if(dx*dx+dy*dy+dz*dz-along*along<radius*radius){best=m;distance=along;}}return best;}
 }
 

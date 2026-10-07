@@ -1,4 +1,6 @@
 import {BlockInfo} from './engine.js';
+import {shape} from './extra-data.js';
+import {blockBoxes, faceUV, fullCube, COMPOSITE_BLOCKS} from './block-geometry.js';
 
 const MOB_COL = {
   creeper: '#4F8A32', zombie: '#5B8F3C', skeleton: '#E8DFC6', spider: '#3f302b',
@@ -30,6 +32,7 @@ const hashU = (x, y, s) => {
 };
 const fract = (v) => v - Math.floor(v);
 const solid = (b) => b && b !== 9 && b !== 14 && b !== 18;
+const ALPHA_BLOCKS = new Set([6, 9, 97, 100, 124, 125]);
 
 function texelFor(id, face, x, y) {
   const [br, bg, bb] = hexRgb(BlockInfo[id]?.color || '#7d7971');
@@ -129,7 +132,7 @@ class SoftwareRenderer {
     this.depth = new Float32Array(this.iw * this.ih);
     this.img = null;
     this.lut = new Uint8Array(256 * 3);
-    this.tex = new Uint8Array(256 * 3 * TEX_FACE * 3);
+    this.tex = new Uint8Array(256 * 6 * TEX_FACE * 4);
     this.lutReady = false;
     this.tier = 1;
     this.maxT = 62;
@@ -167,23 +170,34 @@ class SoftwareRenderer {
     if (this.ctx.imageSmoothingEnabled) this.ctx.imageSmoothingQuality = 'low';
   }
   refreshLut() {
+    const atlas = this.view?.atlas;
+    const artwork = atlas?.getContext('2d')?.getImageData(0, 0, atlas.width, atlas.height).data;
+    const baseTiles = {2:2,3:3,4:4,6:7,7:8,8:16,9:10,10:11,11:12,12:13,13:14,14:10,15:15,18:21,19:22,20:23,21:9};
     for (let i = 0; i < 256; i++) {
       const [r, g, b] = hexRgb(BlockInfo[i]?.color || '#7d7971');
       this.lut[i * 3] = r; this.lut[i * 3 + 1] = g; this.lut[i * 3 + 2] = b;
-      for (let face = 0; face < 3; face++) {
+      for (let face = 0; face < 6; face++) {
+        const tile = globalThis.__carbonTile?.(i, face) ?? (i === 1 ? face === 2 ? 0 : face === 3 ? 2 : 1
+          : i === 5 ? face === 2 || face === 3 ? 6 : 5 : i === 16 ? face === 2 ? 17 : face === 3 ? 8 : 18
+          : i === 17 ? face === 5 ? 19 : 20 : baseTiles[i] ?? 3);
         for (let y = 0; y < TEX; y++) for (let x = 0; x < TEX; x++) {
-          const [tr, tg, tb] = texelFor(i, face, x, y);
-          const o = (((i * 3 + face) * TEX + y) * TEX + x) * 3;
-          this.tex[o] = tr; this.tex[o + 1] = tg; this.tex[o + 2] = tb;
+          const o = (((i * 6 + face) * TEX + y) * TEX + x) * 4;
+          if (artwork) {
+            const source = ((Math.floor(tile / 16) * 32 + y * 2) * atlas.width + tile % 16 * 32 + x * 2) * 4;
+            this.tex.set(artwork.subarray(source, source + 4), o);
+          } else {
+            const [tr, tg, tb] = texelFor(i, face === 2 ? 1 : face === 3 ? 2 : 0, x, y);
+            this.tex[o] = tr; this.tex[o + 1] = tg; this.tex[o + 2] = tb; this.tex[o + 3] = 255;
+          }
         }
       }
     }
     this.lutReady = true;
   }
   sampleTex(id, faceKind, u, v) {
-    const x = (u * TEX) & 15, y = (v * TEX) & 15;
-    const o = (((id * 3 + faceKind) * TEX + y) * TEX + x) * 3;
-    return [this.tex[o], this.tex[o + 1], this.tex[o + 2]];
+    const x = clamp(u * TEX | 0, 0, 15), y = clamp(v * TEX | 0, 0, 15);
+    const o = (((id * 6 + faceKind) * TEX + y) * TEX + x) * 4;
+    return [this.tex[o], this.tex[o + 1], this.tex[o + 2], this.tex[o + 3]];
   }
   skyAt(ndcY, base, night) {
     const t = clamp(ndcY * 0.5 + 0.42, 0, 1);
@@ -230,6 +244,20 @@ class SoftwareRenderer {
     const pix = img.data;
     const depth = this.depth;
     const useAO = this.useAO;
+    const shapeCache = new Map(), visualShapes = Array.from({length: 256}, (_, id) => shape(id));
+    const partialBlocks = new Set(visualShapes.flatMap((box, id) => box && !fullCube(box) ? [id] : []));
+    const boxesAt = (id, x, y, z) => {
+      const key = `${x},${y},${z}`;
+      if (shapeCache.has(key)) return shapeCache.get(key);
+      const fallback = visualShapes[id] || [0, 0, 0, 1, 1, 1];
+      const boxes = blockBoxes(id, {
+        fallback, meta: world.metadata?.get(key)?.meta || {},
+        neighbor: (dx, dy, dz) => world.get(x + dx, y + dy, z + dz),
+        neighborMeta: (dx, dy, dz) => world.metadata?.get(`${x + dx},${y + dy},${z + dz}`)?.meta || {},
+        solidNeighbor: b => solid(b) && fullCube(visualShapes[b]) && !COMPOSITE_BLOCKS.has(b),
+      });
+      shapeCache.set(key, boxes); return boxes;
+    };
     for (let y = 0; y < h; y++) {
       const ndcY = 1 - (y + 0.5) / h * 2;
       const uyS = ndcY * tan;
@@ -255,7 +283,38 @@ class SoftwareRenderer {
         let t = 0, face = 2, hit = 0, steps = 0, axis = 1, fnx = 0, fny = 1, fnz = 0;
         while (t <= maxT && steps++ < maxSteps) {
           const b = world.get(vx, vy, vz);
-          if (b) { hit = b; break; }
+          if (b) {
+            let candidateT = t, normal = [fnx, fny, fnz];
+            if (COMPOSITE_BLOCKS.has(b) || partialBlocks.has(b)) {
+              candidateT = Infinity;
+              for (const box of boxesAt(b, vx, vy, vz)) {
+                let near = 0, far = Math.min(tMaxX, tMaxY, tMaxZ), candidateNormal = normal;
+                const rayOrigin = [ox - vx, oy - vy, oz - vz], rayDirection = [dx, dy, dz];
+                for (let a = 0; a < 3; a++) {
+                  if (Math.abs(rayDirection[a]) < 1e-9) { if (rayOrigin[a] < box[a] || rayOrigin[a] > box[a + 3]) { far = -1; break; } continue; }
+                  const first = (box[a] - rayOrigin[a]) / rayDirection[a], second = (box[a + 3] - rayOrigin[a]) / rayDirection[a];
+                  const entry = Math.min(first, second), exit = Math.max(first, second);
+                  if (entry > near) { near = entry; candidateNormal = [0, 0, 0]; candidateNormal[a] = rayDirection[a] > 0 ? -1 : 1; }
+                  far = Math.min(far, exit);
+                }
+                if (near <= far && near >= t - 1e-6 && near < candidateT) { candidateT = near; normal = candidateNormal; }
+              }
+            }
+            if (Number.isFinite(candidateT)) {
+              let visible = true;
+              if (ALPHA_BLOCKS.has(b)) {
+                const atlasFace = normal[0] > 0 ? 0 : normal[0] < 0 ? 1 : normal[1] > 0 ? 2 : normal[1] < 0 ? 3 : normal[2] > 0 ? 4 : 5;
+                const point = [ox + dx * candidateT - vx, oy + dy * candidateT - vy, oz + dz * candidateT - vz];
+                const [u, vv] = faceUV(atlasFace, point);
+                visible = this.sampleTex(b, atlasFace, u, 1 - vv)[3] >= 128;
+              }
+              if (visible) {
+                t = candidateT; [fnx, fny, fnz] = normal; axis = fnx ? 0 : fny ? 1 : 2;
+                face = fnx < 0 ? 0 : fnx > 0 ? 1 : fny < 0 ? 3 : fny > 0 ? 2 : fnz < 0 ? 4 : 5;
+                hit = b; break;
+              }
+            }
+          }
           if (tMaxX <= tMaxY && tMaxX <= tMaxZ) {
             t = tMaxX; tMaxX += invX; vx += sx; face = sx > 0 ? 0 : 1; axis = 0; fnx = -sx; fny = 0; fnz = 0;
           } else if (tMaxY <= tMaxZ) {
@@ -268,11 +327,9 @@ class SoftwareRenderer {
         const o = i * 4;
         if (hit) {
           const hx = ox + dx * t, hy = oy + dy * t, hz = oz + dz * t;
-          let u, v, faceKind;
-          if (axis === 0) { u = fract(hz); v = 1 - fract(hy); faceKind = 0; }
-          else if (axis === 1) { u = fract(hx); v = fract(hz); faceKind = fny > 0 ? 1 : 2; }
-          else { u = fract(hx); v = 1 - fract(hy); faceKind = 0; }
-          const [tr, tg, tb] = this.sampleTex(hit, faceKind, u, v);
+          const atlasFace = fnx > 0 ? 0 : fnx < 0 ? 1 : fny > 0 ? 2 : fny < 0 ? 3 : fnz > 0 ? 4 : 5;
+          const [u, vv] = faceUV(atlasFace, [hx - vx, hy - vy, hz - vz]), v = 1 - vv;
+          const [tr, tg, tb] = this.sampleTex(hit, atlasFace, u, v);
           let shade = FACE_LIGHT[face] * (0.92 + ((vx * 73 ^ vy * 41 ^ vz * 19) & 15) / 220);
           shade *= 0.55 + 0.45 * Math.max(0, fny * 0.85 + fnx * 0.22 + fnz * 0.16);
           if (useAO) shade *= this.aoAt(world, vx, vy, vz, fnx, fny, fnz, u, v);

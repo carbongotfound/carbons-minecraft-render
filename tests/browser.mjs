@@ -2,7 +2,7 @@ import assert from 'node:assert/strict';
 import {mkdir, writeFile} from 'node:fs/promises';
 import {spawn} from 'node:child_process';
 import {resolve} from 'node:path';
-import {chromium} from 'playwright';
+import {chromium} from './browser-runtime.mjs';
 
 // Exercise the real renderer, UI, inventory and physics in an isolated world.
 // No multiplayer account is created and no edits are sent to the shared world.

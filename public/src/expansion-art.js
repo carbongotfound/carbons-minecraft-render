@@ -3,7 +3,7 @@ import {Mesh,Group,BoxGeometry,PlaneGeometry,Material,BasicMaterial,CanvasTextur
 import {B,BLOCKS,TILES,blockShape,keyOf,parseKey,CARDINAL} from './expansion-data.js';
 import {hash,ITEMS} from './core.js';
 const box=new BoxGeometry(1,1,1);
-export const DECOR=new Set([B.PORTAL,B.PORTAL_Z,B.END_PORTAL,B.END_EXIT,B.WIRE,B.LEVER,B.LEVER_ON,B.RED_TORCH,B.RED_TORCH_OFF,B.REPEATER,B.PLATE,B.BUTTON,B.STONE_BUTTON,B.BREWING_STAND,B.LADDER,B.RAIL,B.POWERED_RAIL,B.CARROTS,B.POTATOES,B.BEETROOTS,B.FLOWER,B.MUSHROOM,B.CAMPFIRE,B.FENCE,B.ANVIL,B.HOPPER]);
+export const DECOR=new Set([B.PORTAL,B.PORTAL_Z,B.END_PORTAL,B.END_EXIT,B.WIRE,B.LEVER,B.LEVER_ON,B.RED_TORCH,B.RED_TORCH_OFF,B.REPEATER,B.PLATE,B.BUTTON,B.STONE_BUTTON,B.BREWING_STAND,B.LADDER,B.RAIL,B.POWERED_RAIL,B.CARROTS,B.POTATOES,B.BEETROOTS,B.FLOWER,B.MUSHROOM,B.CAMPFIRE,B.ANVIL,B.HOPPER]);
 export function extendArt(view){const c=view.atlas,g=c.getContext('2d');g.imageSmoothingEnabled=false;
  for(const[id,d]of BLOCKS){const t=TILES.get(id),ox=t%16*32,oy=Math.floor(t/16)*32;g.fillStyle=d.color;g.fillRect(ox,oy,32,32);for(let y=0;y<16;y++)for(let x=0;x<16;x++){const n=hash(x,y,id);g.fillStyle=n>.5?'#fff1':'#0002';g.fillRect(ox+x*2,oy+y*2,2,2);}
   const rect=(x,y,w,h,col)=>{g.fillStyle=col;g.fillRect(ox+x*2,oy+y*2,w*2,h*2);};
